@@ -6,20 +6,34 @@
 # Note that environment variables can be set in several places
 # See https://docs.gitlab.com/ci/variables/#cicd-variable-precedence
 stages:
-  - deploy
+  - sync
 
-pages:
-  stage: deploy
+sync-to-github:
+  stage: sync
   tags:
     - pages
 
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
   script:
-    - New-Item -ItemType Directory -Force -Path public | Out-Null
-    - Copy-Item -Path index.html -Destination public\index.html
+    - |
+      $ErrorActionPreference = "Stop"
 
-  artifacts:
-    paths:
-      - public
+      Write-Host "Syncing GitLab main -> GitHub main"
 
-  only:
-    - main
+      $pair = "pinkshark1:$env:GITHUB_PAT"
+      $basic = [Convert]::ToBase64String(
+        [Text.Encoding]::ASCII.GetBytes($pair)
+      )
+
+      git -c "http.extraHeader=Authorization: Basic $basic" `
+          push `
+          https://github.com/pinkshark1/kspo_data_explorer.git `
+          HEAD:main
+
+      if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+      }
+
+      Write-Host "GitHub sync completed."
