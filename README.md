@@ -1,93 +1,205 @@
 # KSPO 데이터 탐색기
 
+## 데이터 탐색기
 
+### [**https://pinkshark1.github.io/kspo_data_explorer/**](https://pinkshark1.github.io/kspo_data_explorer/)
 
-## Getting started
+국민체육진흥공단(KSPO)이 보유·개방하고 있는 데이터 자산을 한눈에 확인하기 위한 웹 기반 데이터 탐색기입니다.
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+데이터 목록을 단순 조회하는 방식에서 벗어나 **검색·필터·카테고리·데이터 상세정보·데이터 간 연계관계** 등을 통해 필요한 데이터를 보다 쉽게 탐색할 수 있도록 구성하였습니다.
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+별도 프로그램 설치 없이 웹 브라우저에서 위 주소로 접속하여 사용할 수 있습니다.
 
-## Add your files
+---
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+## 주요 기능
 
+| 구분            | 내용                                   |
+| ------------- | ------------------------------------ |
+| **데이터 검색**    | 데이터명과 주요 정보를 기준으로 필요한 데이터를 검색        |
+| **카테고리 탐색**   | 체육·스포츠 관련 데이터를 분야별로 분류하여 탐색          |
+| **데이터 필터**    | 데이터 출처, 제공 형태, 업데이트 주기 등 조건을 이용한 필터링 |
+| **데이터 상세정보**  | 데이터 소개, 주요 내용 및 관련 정보를 한 화면에서 확인     |
+| **데이터 관계도**   | 데이터 간 연계관계를 시각적으로 탐색                 |
+| **데이터 출처 구분** | 공공데이터포털, 문화빅데이터플랫폼 등 데이터 제공·개방 출처 확인 |
+| **웹 기반 이용**   | 별도 프로그램 설치 없이 브라우저에서 바로 이용           |
+
+---
+
+## 운영 구조
+
+개발·관리는 **AI정부지원서비스 GitLab**에서 수행하고, 공개용 웹페이지는 **GitHub Pages**를 이용합니다.
+
+```text
+[원본 / 개발·관리]
+
+AI정부지원서비스 GitLab
+gitlab.aigov.go.kr
+        │
+        │ main 브랜치 Commit
+        ▼
+GitLab CI/CD
+        │
+        ▼
+Project Runner
+        │
+        │ GitHub main 자동 동기화
+        ▼
+[공개용 미러]
+
+GitHub
+pinkshark1/kspo_data_explorer
+        │
+        │ GitHub Pages
+        ▼
+[웹 서비스]
+
+https://pinkshark1.github.io/kspo_data_explorer/
 ```
-cd existing_repo
-git remote add origin https://gitlab.aigov.go.kr/doongju1/kspo_data_explorer.git
-git branch -M main
-git push -uf origin main
+
+### 저장소 역할
+
+| 구분               | 주소                                               | 역할              |
+| ---------------- | ------------------------------------------------ | --------------- |
+| **GitLab**       | `gitlab.aigov.go.kr/doongju1/kspo_data_explorer` | 원본 소스 관리 및 수정   |
+| **GitHub**       | `github.com/pinkshark1/kspo_data_explorer`       | 웹 공개를 위한 미러 저장소 |
+| **GitHub Pages** | `pinkshark1.github.io/kspo_data_explorer/`       | 실제 데이터 탐색기 서비스  |
+
+**GitLab을 원본(Source of Truth)으로 사용합니다.**
+
+GitHub 저장소는 공개 배포를 위한 미러이므로 원칙적으로 GitHub에서 직접 파일을 수정하지 않습니다.
+
+---
+
+## 배포 방식
+
+`main` 브랜치를 기준으로 배포합니다.
+
+```text
+1. GitLab에서 파일 수정
+          ↓
+2. main 브랜치 Commit
+          ↓
+3. GitLab Pipeline 자동 실행
+          ↓
+4. Project Runner가 작업 수행
+          ↓
+5. GitHub main 브랜치로 자동 동기화
+          ↓
+6. GitHub Pages 자동 배포
+          ↓
+7. 공개 URL에 변경사항 반영
 ```
 
-## Integrate with your tools
+따라서 정상적인 운영 시 **GitHub에 별도로 파일을 업로드하거나 GitHub Pages를 수동으로 갱신할 필요가 없습니다.**
 
-* [Set up project integrations](https://gitlab.aigov.go.kr/doongju1/kspo_data_explorer/-/settings/integrations)
+---
 
-## Collaborate with your team
+## 저장소 구성
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+현재 데이터 탐색기는 브라우저에서 실행할 수 있는 정적 웹 콘텐츠를 중심으로 구성되어 있습니다.
 
-## Test and Deploy
+```text
+kspo_data_explorer/
+│
+├─ index.html
+│   └─ 데이터 탐색기 메인 화면
+│
+├─ README.md
+│   └─ 프로젝트 및 운영 방법 안내
+│
+└─ .gitlab-ci.yml
+    └─ GitLab CI/CD 및 GitHub 자동 동기화 설정
+```
 
-Use the built-in continuous integration in GitLab.
+구성 변경 시 GitHub Pages에서 사용하는 상대경로가 정상적으로 유지되는지 확인합니다.
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+---
 
-***
+## 운영 원칙
 
-# Editing this README
+### GitLab에서만 원본 수정
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+```text
+GitLab   = 원본
+GitHub   = 공개용 미러
+Pages    = 서비스 화면
+```
 
-## Suggestions for a good README
+GitHub에서 직접 수정할 경우 GitLab과 GitHub의 Commit 이력이 달라져 자동 동기화가 실패할 수 있습니다.
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+따라서 소스 수정은 반드시 **GitLab → main**을 기준으로 수행합니다.
+---
 
-## Name
-Choose a self-explaining name for your project.
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+## 개발 및 운영 기준
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+* 기본 브랜치: `main`
+* 원본 저장소: GitLab
+* 공개 미러: GitHub
+* 웹 배포: GitHub Pages
+* 배포 방식: GitLab CI/CD
+* 실행 Runner: Project Runner
+* 공개 URL: `https://pinkshark1.github.io/kspo_data_explorer/`
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+---
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+## 변경 관리
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+데이터 탐색기의 기능이나 데이터를 변경할 경우 가능하면 Commit 메시지에 변경내용을 명확하게 작성합니다.
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+예:
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+```text
+데이터 카테고리 분류 개선
+```
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+```text
+데이터셋 검색 기능 수정
+```
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+```text
+데이터 관계도 UI 개선
+```
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+```text
+공공데이터포털 데이터 업데이트
+```
 
-## License
-For open source projects, say how it is licensed.
+```text
+GitHub Pages 배포 설정 수정
+```
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+이를 통해 변경 이력을 GitLab에서 추적할 수 있도록 합니다.
+
+---
+
+## 프로젝트 주소
+
+### 원본 저장소
+
+**GitLab**
+
+`https://gitlab.aigov.go.kr/doongju1/kspo_data_explorer`
+
+### 공개 미러
+
+**GitHub**
+
+`https://github.com/pinkshark1/kspo_data_explorer`
+
+### 데이터 탐색기
+
+**GitHub Pages**
+
+### [**https://pinkshark1.github.io/kspo_data_explorer/**](https://pinkshark1.github.io/kspo_data_explorer/)
+
+---
+
+## 관리 참고사항
+
+이 프로젝트는 **GitLab을 개발·관리 환경으로 사용하고 GitHub Pages를 웹 배포 채널로 활용**합니다.
+
+따라서 운영 과정에서 가장 중요한 원칙은 다음과 같습니다.
+
