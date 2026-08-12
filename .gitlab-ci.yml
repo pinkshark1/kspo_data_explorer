@@ -5,18 +5,21 @@
 # Container Scanning customization: https://docs.gitlab.com/user/application_security/container_scanning/#customizing-analyzer-behavior
 # Note that environment variables can be set in several places
 # See https://docs.gitlab.com/ci/variables/#cicd-variable-precedence
-image: busybox
-
 stages:
   - deploy
 
 pages:
   stage: deploy
+  tags:
+    - pages
+
   script:
-    - mkdir public
-    - cp index.html public/index.html
+    - New-Item -ItemType Directory -Force -Path public | Out-Null
+    - Copy-Item -Path index.html -Destination public\index.html
+
   artifacts:
     paths:
       - public
+
   only:
     - main
