@@ -6,6 +6,20 @@
 
 ---
 
+## KSPO 데이터 지도 사용방법
+
+공공데이터를 쉽고 빠르게 찾는 방법을 영상으로 확인해보세요.
+
+<p align="center">
+  <a href="assets/kspo-data-map-guide.mp4">
+    <img src="assets/kspo-data-map-guide.jpg" alt="KSPO 데이터 지도 사용방법 영상 재생" width="900" />
+  </a>
+</p>
+
+<p align="center"><strong>▶ 클릭하여 사용방법 영상 보기</strong></p>
+
+---
+
 ### 왜 만들었나요?
 
 공단의 데이터는 **공공데이터포털, 문화빅데이터플랫폼 등 여러 곳에 나뉘어 공개**되어 있습니다.
