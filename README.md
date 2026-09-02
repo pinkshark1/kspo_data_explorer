@@ -11,7 +11,7 @@
 공공데이터를 쉽고 빠르게 찾는 방법을 영상으로 확인해보세요.
 
 <p align="center">
-  <a href="assets/kspo-data-map-guide.mp4">
+  <a href="https://youtu.be/_-BNy6RB8Xk">
     <img src="assets/kspo-data-map-guide.jpg" alt="KSPO 데이터 지도 사용방법 영상 재생" width="900" />
   </a>
 </p>
