@@ -1,0 +1,7 @@
+node_modules/
+# 비공개: 내부 운영 결정 메모와 마스킹 규칙(실명 포함)은 저장소에 올리지 않는다
+AGENTS.md
+scripts/*.local.json
+.DS_Store
+Thumbs.db
+*.log

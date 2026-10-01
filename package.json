@@ -1,0 +1,31 @@
+{
+  "name": "kspo-data-map",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "KSPO 데이터 지도 - 공공데이터포털·문화빅데이터플랫폼에 개방된 공단 데이터를 한 화면에서 찾는 정적 웹 서비스",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "start": "node scripts/serve.mjs",
+    "check:data": "node scripts/validate-data.mjs",
+    "check:ui": "node scripts/check-ui.mjs",
+    "notices": "node scripts/generate-notices.mjs",
+    "fetch:meta": "node scripts/fetch-portal-metadata.mjs",
+    "check:search": "node scripts/check-search.mjs",
+    "check:ai": "node scripts/check-ai.mjs",
+    "ai-gateway": "node scripts/ai-gateway.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.50.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
