@@ -161,7 +161,7 @@ try {
   await desktop.press("#ask-question", "Control+Enter");
   await desktop.waitForSelector(".ask-list .ask-item");
   check("질문 검색: Ctrl+Enter 로도 질문할 수 있다", (await desktop.locator(".ask-list .ask-item").count()) > 0);
-  check("질문 검색: AI 방식을 고르기 전에는 AI SDK 를 내려받지 않고 외부로 요청하지 않는다", !requestedUrls.some((url) => /\/chunks\/sdk-/.test(url)) && requestedUrls.every((url) => url.startsWith(base)));
+  check("질문 검색: AI 방식을 고르기 전에는 별도 AI 파일을 내려받지 않고 외부로 요청하지 않는다", !requestedUrls.some((url) => /\/chunks\//.test(url)) && requestedUrls.every((url) => url.startsWith(base)));
 
   // 관계도
   await navButton(desktop, "관계도").click();

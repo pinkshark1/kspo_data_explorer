@@ -18,7 +18,7 @@
 //   AI_GATEWAY_ORIGINS         호출을 허용할 화면 주소(쉼표 구분). 기본 http://localhost:4173
 //   AI_GATEWAY_ALLOW_NO_ORIGIN true 면 Origin 헤더 없는 요청(서버 간 호출 등)도 허용. 기본 false
 //   AI_GATEWAY_TRUST_PROXY     true 면 X-Forwarded-For 의 첫 주소를 이용자 IP 로 본다(프록시 뒤에서만). 기본 false
-//   AI_GATEWAY_MODEL / _EFFORT / _MAX_TOKENS / _REFUSAL_FALLBACK   기본은 data/site.json 의 ai.claude 값 (_EFFORT=none 이면 effort 미전송)
+//   AI_GATEWAY_MODEL / _EFFORT / _MAX_TOKENS / _REFUSAL_FALLBACK   기본은 claude-haiku-4-5 (data/site.json 에 ai.claude 가 있으면 그 값) (_EFFORT=none 이면 effort 미전송)
 //   AI_GATEWAY_RATE_PER_MIN    IP 당 분당 요청 수. 기본 20
 //   AI_GATEWAY_DAILY_LIMIT     하루 전체 요청 수 상한(0 이면 제한 없음). 기본 2000
 //   AI_GATEWAY_MAX_CONCURRENT  동시에 처리하는 요청 수 상한. 기본 4

@@ -7,8 +7,6 @@ const RELEVANCE_LABEL = { high: "관련도 높음", medium: "관련도 보통", 
 
 // 이용자 본인의 API 키로 이 브라우저에서 직접 부르는 방식. 모델·안내 주소는 site.json 의 ai.<방식> 에 있다.
 const KEY_MODES = {
-  claude: { name: "Claude", target: "Anthropic(Claude)", host: "Anthropic", keyLabel: "Claude API 키", placeholder: "sk-ant-..." },
-  openai: { name: "GPT", target: "OpenAI(GPT)", host: "OpenAI", keyLabel: "OpenAI API 키", placeholder: "sk-..." },
   gemini: { name: "Gemini", target: "Google(Gemini)", host: "Google", keyLabel: "Gemini API 키", placeholder: "AIza..." },
 };
 
@@ -73,7 +71,7 @@ export default function AskView({ store, saved, onSave, onOpenDataset }) {
   const [mode, setMode] = useState(modes.some((entry) => entry.id === saved?.mode) ? saved.mode : defaultMode);
   const [question, setQuestion] = useState(saved?.question ?? "");
   // 방식별 API 키. 이 화면의 메모리에만 있다. 저장하지 않고, 화면을 벗어나면 사라진다.
-  // 방식마다 따로 두는 이유: 다른 서비스를 고른 채 질문해도 앞서 입력한 키가 엉뚱한 서비스로 나가지 않게 하려고.
+  // 방식마다 따로 두는 이유: 키가 필요한 방식이 늘어도 앞서 입력한 키가 엉뚱한 서비스로 나가지 않게 하려고.
   const [keys, setKeys] = useState({});
   const keyMode = KEY_MODES[mode]; // 키를 입력해야 하는 방식이면 그 정보, 아니면 undefined
   const apiKey = keys[mode] ?? "";

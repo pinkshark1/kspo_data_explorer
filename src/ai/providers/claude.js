@@ -1,6 +1,6 @@
 // Claude API 호출. 공식 SDK(@anthropic-ai/sdk)를 쓴다.
-//  - 브라우저: 이용자가 직접 입력한 키로 호출한다. (askClaude - 키는 저장하지 않고 이 페이지의 메모리에서만 쓴다)
-//  - 서버: scripts/ai-gateway.mjs 가 기관의 키로 호출한다. (runClaudeRequest 를 공유)
+// 기관 AI 서버(scripts/ai-gateway.mjs, 참조 구현)가 기관의 키로 호출할 때만 쓴다. 화면(브라우저)에서는 부르지 않으므로
+// 이 파일은 배포용 assets/app.js 에 들어가지 않는다. (브라우저에서 이용자 키로 부르는 방식은 Gemini 하나뿐이다)
 import { AiError } from "../errors.js";
 import { AI_SCHEMA, FORMAT_HINT } from "../prompt.js";
 
@@ -66,16 +66,4 @@ export async function runClaudeRequest({ Anthropic, client, config, system, user
   const textBlock = textBlocks.at(-1);
   if (!textBlock) throw new AiError("format", "AI 응답에서 내용을 찾지 못했습니다.");
   return textBlock.text;
-}
-
-/**
- * 브라우저에서 이용자의 키로 직접 호출한다. SDK 는 처음 쓸 때만 내려받는다(동적 import).
- * @param {object} options
- * @param {string} options.apiKey 이용자가 입력한 키 (메모리에서만 사용)
- */
-export async function askClaude({ apiKey, config, system, userMessage, signal }) {
-  const { default: Anthropic } = await import("@anthropic-ai/sdk");
-  // dangerouslyAllowBrowser: 브라우저에서 직접 호출하려면 필요하다. 키는 이용자 본인 것이며 서버로 보내거나 저장하지 않는다.
-  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true, maxRetries: 0, timeout: 90_000 });
-  return runClaudeRequest({ Anthropic, client, config, system, userMessage, signal });
 }

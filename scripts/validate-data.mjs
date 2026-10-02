@@ -150,10 +150,8 @@ info.push(`연계 아이디어 ${site.ideas?.length ?? 0}건`);
 if (site.ai?.enabled) {
   const ai = site.ai;
   const modes = ai.modes ?? [];
-  for (const mode of modes) if (!["local", "claude", "openai", "gemini", "gateway"].includes(mode)) errors.push(`site.json ai.modes 에 알 수 없는 방식이 있습니다: ${mode}`);
-  for (const mode of ["claude", "openai", "gemini"]) {
-    if (modes.includes(mode) && !(ai[mode]?.model && ai[mode]?.maxTokens)) errors.push(`site.json ai.${mode} 에 model, maxTokens 가 필요합니다.`);
-  }
+  for (const mode of modes) if (!["local", "gemini", "gateway"].includes(mode)) errors.push(`site.json ai.modes 에 알 수 없는 방식이 있습니다: ${mode}`);
+  if (modes.includes("gemini") && !(ai.gemini?.model && ai.gemini?.maxTokens)) errors.push("site.json ai.gemini 에 model, maxTokens 가 필요합니다.");
   if (modes.includes("gateway")) {
     if (!/^https:\/\//.test(ai.gateway?.url ?? "") && !/^http:\/\/(localhost|127\.0\.0\.1)/.test(ai.gateway?.url ?? "")) {
       errors.push("site.json ai.gateway.url 은 https:// 주소여야 합니다(개발용 localhost 제외).");

@@ -1,4 +1,4 @@
-// 소스(src/)를 배포용 정적 파일(assets/app.js, assets/app.css, assets/chunks/)로 묶는다.
+// 소스(src/)를 배포용 정적 파일(assets/app.js, assets/app.css)로 묶는다. (동적 import 가 생기면 assets/chunks/ 도 만들어진다)
 // 배포 구조(index.html + assets/ + data/)는 그대로 두고, GitHub Pages/사내 웹서버에 그대로 올린다.
 //
 //   npm run build   : 한 번 빌드

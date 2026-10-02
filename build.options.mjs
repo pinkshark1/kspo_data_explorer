@@ -4,7 +4,7 @@ export const buildOptions = {
   outdir: "assets",
   bundle: true,
   format: "esm",
-  // AI 호출용 SDK 는 질문 검색에서 Claude 를 처음 쓸 때만 내려받도록 별도 파일(assets/chunks/)로 나눈다.
+  // 동적 import() 한 코드는 처음 쓸 때만 내려받도록 별도 파일(assets/chunks/)로 나눈다. (지금은 그런 코드가 없어 chunks/ 가 생기지 않는다)
   splitting: true,
   chunkNames: "chunks/[name]-[hash]",
   target: ["chrome90", "edge90", "firefox90", "safari15"],

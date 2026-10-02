@@ -1,4 +1,4 @@
-// 브라우저에서 fetch 로 AI 서비스(GPT·Gemini)를 부르는 공통 부분. SDK 없이 요청 한 번을 보내고, 취소·시간 초과·연결 실패·HTTP 오류를 AiError 로 바꾼다.
+// 브라우저에서 fetch 로 AI 서비스(현재 Gemini)를 부르는 공통 부분. SDK 없이 요청 한 번을 보내고, 취소·시간 초과·연결 실패·HTTP 오류를 AiError 로 바꾼다.
 import { AiError } from "../errors.js";
 
 const TIMEOUT_MS = 90_000;
@@ -7,7 +7,7 @@ const TIMEOUT_MS = 90_000;
  * JSON 을 POST 하고 { status, data } 를 돌려준다. data 는 응답 본문을 JSON 으로 읽은 값(읽지 못하면 null).
  * 취소·시간 초과·연결 실패는 AiError 로 던지고, HTTP 상태에 따른 판단(400 재시도 등)은 호출한 쪽이 한다.
  * @param {object} options
- * @param {string} options.service 이용자에게 보여줄 서비스 이름 (예: "OpenAI")
+ * @param {string} options.service 이용자에게 보여줄 서비스 이름 (예: "Gemini")
  */
 export async function postJson({ url, headers, body, signal, service }) {
   // 이용자가 취소했거나 시간이 지나면 요청을 끊는다. (AbortSignal.any 는 구형 브라우저에 없어 직접 연결)

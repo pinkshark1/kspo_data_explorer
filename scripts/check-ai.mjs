@@ -1,9 +1,9 @@
 // 질문 검색의 AI 경로 점검(모의 서버 사용).   npm run build && npm run check:ai
-// 실제 Claude 를 호출하지 않는다. Anthropic API 와 기관 AI 서버를 모의 응답으로 대신해, 아래를 확인한다.
+// 실제 AI 를 호출하지 않는다. Gemini API, Anthropic API(중계 서버가 쓰는 쪽), 기관 AI 서버를 모의 응답으로 대신해, 아래를 확인한다.
 //   1) 중계 서버(scripts/ai-gateway.mjs): 요청 형식, 허용 주소, 입력 검사, 호출·하루·동시 처리 한도, 폴백, 거절, 연결 끊김
-//   2) 브라우저의 Claude 직접 호출: 헤더·본문 형식(설정된 모델 기준), 결과 표시, 오류별 안내, 키 비저장, 취소·최신 질문 우선
+//   2) 브라우저의 Gemini 직접 호출: 헤더·본문 형식(설정된 모델 기준), 결과 표시, 오류별 안내, 키 비저장, 취소·최신 질문 우선
 //   3) 브라우저의 기관 AI 서버 호출: 요청 본문, 결과 표시, 거절 처리
-//   4) 브라우저의 GPT(OpenAI)·Gemini(Google) 직접 호출: 헤더·본문 형식, 결과 표시, 오류별 안내, 키 비저장, 방식별 키 분리
+//   화면에 보이는 검색 방식은 ‘기본 검색’과 ‘AI 추천 (Gemini)’ 뿐이다. (Claude·GPT 는 화면에서 뺐다)
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -14,7 +14,8 @@ import { createStaticServer } from "./lib/static-server.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const shippedAi = JSON.parse(fs.readFileSync(path.join(root, "data", "site.json"), "utf8")).ai;
-const shippedClaude = shippedAi.claude; // 지금 배포 설정(모델·effort·폴백)
+// 중계 서버의 기본 설정(모델·effort·폴백). site.json 에 ai.claude 가 없으면 서버 내장 기본값을 쓴다.
+const gatewayDefaults = { model: "claude-haiku-4-5", effort: undefined, refusalFallback: false, ...(shippedAi.claude ?? {}) };
 const results = [];
 const check = (name, ok, detail = "") => {
   results.push({ name, ok });
@@ -133,7 +134,7 @@ async function checkGateway() {
     const call = upstream.calls.at(-1);
     check("[중계] 정상 요청에 추천 결과를 돌려준다(후보 밖 번호는 걸러짐)", ok.status === 200 && data.recommendations.length === 2 && !data.recommendations.some((r) => r.no === 999999) && data.combinations.length === 1);
     check("[중계] 허용된 화면 주소에 CORS 헤더를 준다", ok.headers.get("access-control-allow-origin") === "http://allowed.example");
-    check("[중계] Anthropic 요청이 site.json 설정(모델·effort·폴백)을 따른다", call.headers["x-api-key"] === "sk-ant-mock-key" && call.body.model === shippedClaude.model && call.body.output_config?.effort === (shippedClaude.effort ?? undefined) && call.body.output_config?.format?.type === "json_schema" && (call.body.fallbacks === "default") === !!shippedClaude.refusalFallback && String(call.url).includes("beta=true") === !!shippedClaude.refusalFallback, `${shippedClaude.model} ${call.url}`);
+    check("[중계] Anthropic 요청이 서버 기본 설정(모델·effort·폴백)을 따른다", call.headers["x-api-key"] === "sk-ant-mock-key" && call.body.model === gatewayDefaults.model && call.body.output_config?.effort === (gatewayDefaults.effort ?? undefined) && call.body.output_config?.format?.type === "json_schema" && (call.body.fallbacks === "default") === !!gatewayDefaults.refusalFallback && String(call.url).includes("beta=true") === !!gatewayDefaults.refusalFallback, `${gatewayDefaults.model} ${call.url}`);
     check("[중계] 질문은 <question> 안에, 강제 tool_choice·temperature·thinking 은 없다", String(call.body.messages[0].content).includes("<question>체육시설 안전과 연계할 데이터</question>") && call.body.tool_choice === undefined && call.body.temperature === undefined && call.body.thinking === undefined);
     check("[중계] max_tokens 가 상한(8000) 이하다", call.body.max_tokens <= 8000, `${call.body.max_tokens}`);
 
@@ -244,6 +245,8 @@ const browserPath = [
   .find((candidate) => fs.existsSync(candidate));
 
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "POST, OPTIONS", "access-control-expose-headers": "*" };
+// 브라우저의 사전 요청(preflight)이 통과하도록 키 헤더 이름을 직접 적는다.(와일드카드로는 허용되지 않는 헤더가 있다)
+const CORS_KEY = { ...CORS, "access-control-allow-headers": "authorization, content-type, x-goog-api-key" };
 
 async function openAsk(browser, base, { siteMutator } = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: "ko-KR" });
@@ -264,44 +267,7 @@ async function openAsk(browser, base, { siteMutator } = {}) {
   return { context, page, requests };
 }
 
-// api.anthropic.com 으로 가는 요청을 모의 응답으로 바꾼다. handler(request, body, 호출순번) -> plan
-async function mockAnthropic(page, calls, handler) {
-  await page.route("https://api.anthropic.com/**", async (route) => {
-    const request = route.request();
-    if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
-    const body = request.postDataJSON();
-    calls.push({ url: request.url(), headers: request.headers(), body });
-    const plan = handler(request, body, calls.length);
-    if (plan.delayMs) await sleep(plan.delayMs);
-    if (plan.abort) return route.abort("failed");
-    if (plan.status !== 200) return route.fulfill({ status: plan.status, headers: { ...CORS, "content-type": "application/json" }, body: JSON.stringify({ type: "error", error: { type: plan.errorType ?? "invalid_request_error", message: plan.message ?? "mock" } }) });
-    return route.fulfill({ status: 200, headers: { ...CORS, "content-type": "application/json" }, body: JSON.stringify(messageResponse(plan, body)) });
-  });
-}
-
-async function askWithClaude(page, question = "체육시설 안전과 연계할 수 있는 데이터가 뭐 있어?", key = "sk-ant-test-key-1234") {
-  await page.getByLabel("AI 추천 (Claude)", { exact: false }).check();
-  await page.fill("#ask-api-key", key);
-  await page.fill("#ask-question", question);
-  await page.getByRole("button", { name: /질문하기/ }).click();
-}
-
-// ---- GPT(OpenAI)·Gemini(Google): 이용자 키로 직접 호출하는 방식의 모의 서버와 점검 정보
-// 브라우저의 사전 요청(preflight)이 통과하도록 Authorization 은 이름을 직접 적어야 한다.(와일드카드로는 허용되지 않음)
-const CORS_KEY = { ...CORS, "access-control-allow-headers": "authorization, content-type, x-goog-api-key" };
-
-function openaiResponse(plan, body) {
-  const answer = (plan.answer ?? goodAnswer)(body);
-  const text = typeof answer === "string" ? answer : JSON.stringify(answer);
-  return {
-    id: "resp_mock",
-    object: "response",
-    status: plan.responseStatus ?? "completed",
-    incomplete_details: plan.incompleteReason ? { reason: plan.incompleteReason } : null,
-    output: plan.output ? plan.output(body) : [{ id: "rs_mock", type: "reasoning", summary: [] }, { id: "msg_mock", type: "message", role: "assistant", content: [{ type: "output_text", text, annotations: [] }] }],
-    usage: { input_tokens: 10, output_tokens: 10, total_tokens: 20 },
-  };
-}
+// ---- Gemini(Google): 이용자 키로 직접 호출하는 방식의 모의 서버와 점검 정보
 function geminiResponse(plan, body) {
   const answer = (plan.answer ?? goodAnswer)(body);
   const text = typeof answer === "string" ? answer : JSON.stringify(answer);
@@ -310,56 +276,31 @@ function geminiResponse(plan, body) {
   return { candidates: [{ content: { role: "model", parts: plan.parts ? plan.parts(body) : [{ text: "(생각 과정은 답이 아님)", thought: true }, { text }] }, finishReason: plan.finishReason ?? "STOP", index: 0 }], usageMetadata };
 }
 
-// 방식별 점검 정보. structured(body): 요청이 구조화 출력(JSON 스키마)을 요구하는지
-const DIRECT = {
-  openai: {
-    mode: "AI 추천 (GPT)",
-    keyLabel: "OpenAI API 키",
-    host: "OpenAI",
-    origin: "https://api.openai.com",
-    key: "sk-test-openai-key-5678",
-    config: shippedAi.openai,
-    build: openaiResponse,
-    structured: (body) => !!body.text?.format,
-    errors: [
-      ["인증 오류(401)", { status: 401, error: { error: { message: "Incorrect API key provided: sk-test***5678", code: "invalid_api_key" } } }, "API 키가 올바르지 않"],
-      ["한도 초과(429)", { status: 429, error: { error: { message: "Rate limit reached" } } }, "사용 한도"],
-      ["모델 없음(404)", { status: 404, error: { error: { message: "The model does not exist" } } }, "모델"],
-      ["연결 실패", { abort: true }, "연결하지 못했습니다"],
-      ["AI 거절(refusal)", { status: 200, output: () => [{ id: "msg_mock", type: "message", role: "assistant", content: [{ type: "refusal", refusal: "죄송합니다" }] }] }, "답하지 못했습니다"],
-      ["콘텐츠 필터로 중단", { status: 200, responseStatus: "incomplete", incompleteReason: "content_filter", output: () => [] }, "답하지 못했습니다"],
-      ["응답이 도중에 끊김(max_output_tokens)", { status: 200, responseStatus: "incomplete", incompleteReason: "max_output_tokens", answer: () => '{"summary":"잘' }, "도중에 끊겼습니다"],
-      ["형식 오류", { status: 200, answer: () => "JSON 이 아닌 답변" }, "형식이 올바르지 않"],
-      ["요청 거절(400, 재시도해도 거절)", { status: 400, message: "bad request", error: { error: { message: "unsupported parameter" } } }, "요청을 거절"],
-    ],
-  },
-  gemini: {
-    mode: "AI 추천 (Gemini)",
-    keyLabel: "Gemini API 키",
-    host: "Google",
-    origin: "https://generativelanguage.googleapis.com",
-    key: "AIzaSyTestGeminiKey-1234567890",
-    config: shippedAi.gemini,
-    build: geminiResponse,
-    structured: (body) => !!body.generationConfig?.responseJsonSchema,
-    errors: [
-      ["잘못된 키(400 API_KEY_INVALID)", { status: 400, error: { error: { code: 400, message: "API key not valid. Please pass a valid API key.", status: "INVALID_ARGUMENT", details: [{ reason: "API_KEY_INVALID" }] } } }, "API 키가 올바르지 않"],
-      ["권한 없음(403)", { status: 403, error: { error: { code: 403, message: "permission denied", status: "PERMISSION_DENIED" } } }, "API 키가 올바르지 않"],
-      ["한도 초과(429)", { status: 429, error: { error: { code: 429, message: "quota", status: "RESOURCE_EXHAUSTED" } } }, "사용 한도"],
-      ["모델 없음(404)", { status: 404, error: { error: { code: 404, message: "model not found", status: "NOT_FOUND" } } }, "모델"],
-      ["연결 실패", { abort: true }, "연결하지 못했습니다"],
-      ["질문 차단(blockReason)", { status: 200, blockReason: "SAFETY" }, "답하지 못했습니다"],
-      ["답변 차단(finishReason SAFETY)", { status: 200, finishReason: "SAFETY", parts: () => [] }, "답하지 못했습니다"],
-      ["응답이 도중에 끊김(MAX_TOKENS)", { status: 200, finishReason: "MAX_TOKENS", answer: () => '{"summary":"잘' }, "도중에 끊겼습니다"],
-      ["형식 오류", { status: 200, answer: () => "JSON 이 아닌 답변" }, "형식이 올바르지 않"],
-      ["요청 거절(400, 재시도해도 거절)", { status: 400, error: { error: { code: 400, message: "invalid argument", status: "INVALID_ARGUMENT" } } }, "요청을 거절"],
-    ],
-  },
+const GEMINI = {
+  mode: "AI 추천 (Gemini)",
+  keyLabel: "Gemini API 키",
+  host: "Google",
+  origin: "https://generativelanguage.googleapis.com",
+  key: "AIzaSyTestGeminiKey-1234567890",
+  config: shippedAi.gemini,
+  structured: (body) => !!body.generationConfig?.responseJsonSchema, // 요청이 구조화 출력(JSON 스키마)을 요구하는지
+  errors: [
+    ["잘못된 키(400 API_KEY_INVALID)", { status: 400, error: { error: { code: 400, message: "API key not valid. Please pass a valid API key.", status: "INVALID_ARGUMENT", details: [{ reason: "API_KEY_INVALID" }] } } }, "API 키가 올바르지 않"],
+    ["권한 없음(403)", { status: 403, error: { error: { code: 403, message: "permission denied", status: "PERMISSION_DENIED" } } }, "API 키가 올바르지 않"],
+    ["한도 초과(429)", { status: 429, error: { error: { code: 429, message: "quota", status: "RESOURCE_EXHAUSTED" } } }, "사용 한도"],
+    ["모델 없음(404)", { status: 404, error: { error: { code: 404, message: "model not found", status: "NOT_FOUND" } } }, "모델"],
+    ["연결 실패", { abort: true }, "연결하지 못했습니다"],
+    ["질문 차단(blockReason)", { status: 200, blockReason: "SAFETY" }, "답하지 못했습니다"],
+    ["답변 차단(finishReason SAFETY)", { status: 200, finishReason: "SAFETY", parts: () => [] }, "답하지 못했습니다"],
+    ["응답이 도중에 끊김(MAX_TOKENS)", { status: 200, finishReason: "MAX_TOKENS", answer: () => '{"summary":"잘' }, "도중에 끊겼습니다"],
+    ["형식 오류", { status: 200, answer: () => "JSON 이 아닌 답변" }, "형식이 올바르지 않"],
+    ["요청 거절(400, 재시도해도 거절)", { status: 400, error: { error: { code: 400, message: "invalid argument", status: "INVALID_ARGUMENT" } } }, "요청을 거절"],
+  ],
 };
 
-// 해당 서비스 주소로 가는 요청을 모의 응답으로 바꾼다. handler(request, body, 호출순번) -> plan
-async function mockDirect(page, provider, calls, handler) {
-  await page.route(`${provider.origin}/**`, async (route) => {
+// Gemini 주소로 가는 요청을 모의 응답으로 바꾼다. handler(request, body, 호출순번) -> plan
+async function mockGemini(page, calls, handler) {
+  await page.route(`${GEMINI.origin}/**`, async (route) => {
     const request = route.request();
     if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS_KEY });
     const body = request.postDataJSON();
@@ -369,12 +310,12 @@ async function mockDirect(page, provider, calls, handler) {
     if (plan.abort) return route.abort("failed");
     const headers = { ...CORS_KEY, "content-type": "application/json" };
     if (plan.status !== 200) return route.fulfill({ status: plan.status, headers, body: JSON.stringify(plan.error ?? { error: { message: plan.message ?? "mock" } }) });
-    return route.fulfill({ status: 200, headers, body: JSON.stringify(provider.build(plan, body)) });
+    return route.fulfill({ status: 200, headers, body: JSON.stringify(geminiResponse(plan, body)) });
   });
 }
 
-async function askDirect(page, provider, question = "체육시설 안전과 연계할 수 있는 데이터가 뭐 있어?", key = provider.key) {
-  await page.getByLabel(provider.mode, { exact: false }).check();
+async function askGeminiMode(page, question = "체육시설 안전과 연계할 수 있는 데이터가 뭐 있어?", key = GEMINI.key) {
+  await page.getByLabel(GEMINI.mode, { exact: false }).check();
   await page.fill("#ask-api-key", key);
   await page.fill("#ask-question", question);
   await page.getByRole("button", { name: /질문하기/ }).click();
@@ -386,34 +327,41 @@ async function checkBrowser() {
   const base = `http://127.0.0.1:${port}`;
   const browser = await chromium.launch({ executablePath: browserPath, headless: true });
   try {
-    // --- 정상 경로 (지금 배포 설정 기준)
+    // --- 화면에 보이는 검색 방식은 ‘기본 검색’과 ‘AI 추천 (Gemini)’ 뿐이다
+    {
+      const { context, page } = await openAsk(browser, base);
+      const labels = await page.locator(".ask-modes label b").allInnerTexts();
+      check("[브라우저] 검색 방식은 ‘기본 검색’과 ‘AI 추천 (Gemini)’ 두 가지뿐이다(Claude·GPT 없음)", labels.join("|") === `기본 검색|${GEMINI.mode}`, labels.join("|"));
+      await context.close();
+    }
+
+    // --- Gemini 정상 경로 (지금 배포 설정 기준)
     {
       const { context, page, requests } = await openAsk(browser, base);
       const calls = [];
-      await mockAnthropic(page, calls, () => ({ status: 200 }));
+      await mockGemini(page, calls, () => ({ status: 200 }));
 
-      await page.getByLabel("AI 추천 (Claude)", { exact: false }).check();
+      await page.getByLabel(GEMINI.mode, { exact: false }).check();
+      check("[브라우저] Gemini 를 고르면 ‘Gemini API 키’ 입력란과 전송 대상 안내가 나온다", (await page.locator("label[for=ask-api-key]").innerText()) === GEMINI.keyLabel && (await page.locator("#ask-key-help").innerText()).includes(`${GEMINI.host}로 직접`) && (await page.locator(".ask-privacy").innerText()).includes("Google(Gemini)"));
       await page.fill("#ask-question", "체육시설 안전");
       await page.getByRole("button", { name: "질문하기" }).click();
-      check("[브라우저] 키 없이 AI 방식으로 질문하면 안내가 나오고 호출하지 않는다", (await page.locator("#ask-form-error").innerText()).includes("API 키") && calls.length === 0 && (await page.locator("#ask-api-key").evaluate((el) => el === document.activeElement)));
-      check("[브라우저] SDK 는 질문하기 전에는 내려받지 않는다", !requests.some((url) => /\/assets\/chunks\/sdk-/.test(url)));
+      check("[브라우저] 키 없이 질문하면 안내가 나오고 호출하지 않으며 초점이 키 입력란으로 간다", (await page.locator("#ask-form-error").innerText()).includes(GEMINI.keyLabel) && calls.length === 0 && (await page.locator("#ask-api-key").evaluate((el) => el === document.activeElement)));
 
-      await askWithClaude(page);
+      await askGeminiMode(page);
       await page.waitForSelector(".ask-badge");
       const call = calls[0];
-      check("[브라우저] 호출 헤더: 키·브라우저 직접 접근 허용·API 버전", call.headers["x-api-key"] === "sk-ant-test-key-1234" && call.headers["anthropic-dangerous-direct-browser-access"] === "true" && !!call.headers["anthropic-version"]);
-      check("[브라우저] 요청 본문이 site.json 설정(모델·effort·폴백)을 따른다", call.body.model === shippedClaude.model && call.body.output_config?.effort === (shippedClaude.effort ?? undefined) && call.body.output_config?.format?.type === "json_schema" && (call.body.fallbacks === "default") === !!shippedClaude.refusalFallback, `${call.body.model} ${call.url.replace("https://api.anthropic.com", "")}`);
-      check("[브라우저] 요청에 강제 도구 사용·샘플링 값·thinking 설정이 없다", call.body.tool_choice === undefined && call.body.temperature === undefined && call.body.thinking === undefined);
-      check("[브라우저] SDK 가 질문한 뒤에 내려받는다", requests.some((url) => /\/assets\/chunks\/sdk-/.test(url)));
+      check("[브라우저] 호출 주소·키 헤더·본문(모델·구조화 출력)이 설정을 따른다", call.url === `${GEMINI.origin}/v1beta/models/${GEMINI.config.model}:generateContent` && call.headers["x-goog-api-key"] === GEMINI.key && call.body.generationConfig?.responseMimeType === "application/json" && call.body.generationConfig?.responseJsonSchema?.type === "object" && call.body.generationConfig?.maxOutputTokens === GEMINI.config.maxTokens && !!call.body.systemInstruction?.parts?.[0]?.text, GEMINI.config.model);
+      check("[브라우저] 질문은 <question> 안에, 샘플링 값·도구는 없다", userTextOf(call.body).includes("<question>") && call.body.generationConfig.temperature === undefined && call.body.tools === undefined);
       const itemCount = await page.locator(".ask-list").first().locator(".ask-item").count();
       check("[브라우저] AI 결과: 요약·추천(후보 밖 번호 제외)·관련도·조합 표시", itemCount === 2 && (await page.locator(".ask-summary").innerText()).includes("안전점검") && (await page.locator(".ask-relevance.high").count()) === 1 && (await page.locator(".ask-combo-grid article").count()) === 1, `추천 ${itemCount}건`);
       check("[브라우저] AI 방식에서도 기본 검색 결과를 함께 볼 수 있다", (await page.locator(".ask-local").count()) === 1);
       check("[브라우저] 결과가 나오면 초점이 결과 제목으로 옮겨진다(키보드·화면낭독)", await page.evaluate(() => document.activeElement?.classList.contains("ask-heading")));
       check("[브라우저] 진행 상태는 별도의 알림 영역(role=status)으로 알린다", (await page.locator("p[role=status]").innerText()).includes("추천 데이터"));
+      check("[브라우저] 별도 SDK·조각 파일을 내려받지 않는다(fetch 로 직접 호출)", !requests.some((url) => /\/assets\/chunks\//.test(url)));
       const stored = await page.evaluate(() => ({ local: Object.keys(localStorage).length, session: Object.keys(sessionStorage).length, cookie: document.cookie.length }));
       check("[브라우저] API 키를 어디에도 저장하지 않는다", stored.local === 0 && stored.session === 0 && stored.cookie === 0);
       const external = requests.filter((url) => !url.startsWith(base)).map((url) => new URL(url).origin);
-      check("[브라우저] 외부로 나간 요청은 api.anthropic.com 뿐이고 키가 주소에 없다", external.length > 0 && external.every((origin) => origin === "https://api.anthropic.com") && !requests.some((url) => url.includes("sk-ant")), [...new Set(external)].join(","));
+      check("[브라우저] 외부로 나간 요청은 generativelanguage.googleapis.com 뿐이고 키가 주소·본문에 없다", external.length > 0 && external.every((origin) => origin === GEMINI.origin) && !requests.some((url) => url.includes(GEMINI.key)) && !JSON.stringify(call.body).includes(GEMINI.key), [...new Set(external)].join(","));
 
       // 다른 화면에 다녀와도 질문·결과는 남고 키는 남지 않는다
       await page.locator(".ask-open").first().click();
@@ -429,54 +377,26 @@ async function checkBrowser() {
     {
       const { context, page } = await openAsk(browser, base);
       const calls = [];
-      await mockAnthropic(page, calls, (request, body, n) => (body.output_config?.format ? { status: 400, message: "output_config.format unsupported" } : { status: 200, answer: (b) => `결과입니다: ${JSON.stringify(goodAnswer(b))}` }));
-      await askWithClaude(page);
+      await mockGemini(page, calls, (request, body) => (GEMINI.structured(body) ? { status: 400, error: { error: { message: "schema unsupported" } } } : { status: 200, answer: (b) => `결과입니다: ${JSON.stringify(goodAnswer(b))}` }));
+      await askGeminiMode(page);
       await page.waitForSelector(".ask-badge");
-      const last = calls.at(-1);
-      check("[브라우저] 구조화 출력이 거절되면 형식 지시문을 붙여 재시도해 성공한다", !last.body.output_config?.format && last.body.system.includes("JSON") && calls.length >= 2, `요청 ${calls.length}회`);
-      await context.close();
-    }
-
-    // --- claude-opus-5-5 권장 설정(effort + 폴백)으로 바꾼 경우
-    {
-      const mutator = (site) => {
-        site.ai.claude = { model: "claude-opus-5-5", effort: "low", maxTokens: 16000, refusalFallback: true, keyGuideUrl: site.ai.claude.keyGuideUrl };
-      };
-      const { context, page } = await openAsk(browser, base, { siteMutator: mutator });
-      const calls = [];
-      await mockAnthropic(page, calls, (request, body, n) => (n === 1 ? { status: 400, message: "fallbacks unsupported" } : { status: 200 }));
-      await askWithClaude(page);
-      await page.waitForSelector(".ask-badge");
-      check("[브라우저] Opus 설정: effort 와 폴백(beta)을 보내고, 폴백이 거절되면 옵션 없이 재시도한다", calls.length === 2 && calls[0].url.includes("beta=true") && calls[0].body.fallbacks === "default" && calls[0].body.output_config.effort === "low" && !calls[1].url.includes("beta=true") && calls[1].body.model === "claude-opus-5-5");
-      await context.close();
-    }
-    {
-      const { context, page } = await openAsk(browser, base);
-      const calls = [];
-      await mockAnthropic(page, calls, () => ({ status: 200, content: (body) => [{ type: "thinking", thinking: "", signature: "x" }, { type: "text", text: '{"summary": "도중에 끊긴 글' }, { type: "fallback", from: { model: "a" }, to: { model: "b" } }, { type: "text", text: JSON.stringify(goodAnswer(body)) }] }));
-      await askWithClaude(page);
-      await page.waitForSelector(".ask-badge");
-      check("[브라우저] thinking·폴백 블록이 섞여도 마지막 완성본 글을 쓴다", (await page.locator(".ask-list").first().locator(".ask-item").count()) === 2);
+      const retry = calls.at(-1).body;
+      check("[브라우저] 구조화 출력이 거절되면 형식 지시문을 붙여 재시도해 성공한다", calls.length === 2 && !GEMINI.structured(retry) && retry.systemInstruction.parts[0].text.includes("JSON"), `요청 ${calls.length}회`);
       await context.close();
     }
 
     // --- 오류별 안내 + 기본 검색 결과로 대체
-    const errorCases = [
-      ["인증 오류(401)", () => ({ status: 401, errorType: "authentication_error", message: "invalid x-api-key" }), "API 키가 올바르지 않"],
-      ["한도 초과(429)", () => ({ status: 429, errorType: "rate_limit_error", message: "slow down" }), "사용 한도"],
-      ["연결 실패", () => ({ abort: true }), "연결하지 못했습니다"],
-      ["AI 거절(refusal)", () => ({ status: 200, stopReason: "refusal" }), "답하지 못했습니다"],
-      ["응답이 도중에 끊김(max_tokens)", () => ({ status: 200, stopReason: "max_tokens", answer: () => '{"summary":"잘' }), "도중에 끊겼습니다"],
-      ["형식 오류", () => ({ status: 200, answer: () => "JSON 이 아닌 답변" }), "형식이 올바르지 않"],
-    ];
-    for (const [label, plan, expected] of errorCases) {
+    for (const [caseLabel, plan, expected] of GEMINI.errors) {
       const { context, page } = await openAsk(browser, base);
-      await mockAnthropic(page, [], plan);
-      await askWithClaude(page);
+      const calls = [];
+      await mockGemini(page, calls, () => plan);
+      await askGeminiMode(page);
       await page.waitForSelector(".ask-result .ask-error[role=alert]", { timeout: 20000 });
       const message = await page.locator(".ask-result .ask-error").innerText();
       const fallbackItems = await page.locator(".ask-list .ask-item").count();
-      check(`[브라우저] ${label}: 안내 문구 + 기본 검색 결과로 대체`, message.includes(expected) && fallbackItems > 0 && (message.match(/기본 검색 결과/g) ?? []).length === 1, message.slice(0, 60));
+      check(`[브라우저] ${caseLabel}: 안내 문구 + 기본 검색 결과로 대체`, message.includes(expected) && fallbackItems > 0 && (message.match(/기본 검색 결과/g) ?? []).length === 1 && !message.includes(GEMINI.key), message.slice(0, 60));
+      // 키가 잘못된 경우는 다시 시도해도 소용없으므로 한 번만 보낸다
+      if (/잘못된 키|권한 없음/.test(caseLabel)) check(`[브라우저] ${caseLabel}: 같은 요청을 되풀이하지 않는다`, calls.length === 1, `요청 ${calls.length}회`);
       await context.close();
     }
 
@@ -484,8 +404,8 @@ async function checkBrowser() {
     {
       const { context, page } = await openAsk(browser, base);
       const calls = [];
-      await mockAnthropic(page, calls, (request, body, n) => (n === 1 ? { status: 200, delayMs: 1500, answer: () => ({ summary: "첫 번째(느린) 답", recommendations: [], combinations: [] }) } : { status: 200, answer: (b) => ({ ...goodAnswer(b), summary: "두 번째(빠른) 답" }) }));
-      await askWithClaude(page, "첫 번째 질문");
+      await mockGemini(page, calls, (request, body, n) => (n === 1 ? { status: 200, delayMs: 1500, answer: () => ({ summary: "첫 번째(느린) 답", recommendations: [], combinations: [] }) } : { status: 200, answer: (b) => ({ ...goodAnswer(b), summary: "두 번째(빠른) 답" }) }));
+      await askGeminiMode(page, "첫 번째 질문");
       await page.waitForTimeout(200);
       check("[브라우저] 처리 중에도 취소 버튼이 있고 질문 버튼은 눌린 상태로 막히지 않는다", (await page.locator(".ask-cancel").count()) === 1 && (await page.getByRole("button", { name: "다시 질문하기" }).isEnabled()));
       await page.fill("#ask-question", "두 번째 질문");
@@ -497,98 +417,12 @@ async function checkBrowser() {
     }
     {
       const { context, page } = await openAsk(browser, base);
-      await mockAnthropic(page, [], () => ({ status: 200, delayMs: 3000 }));
-      await askWithClaude(page);
+      await mockGemini(page, [], () => ({ status: 200, delayMs: 3000 }));
+      await askGeminiMode(page);
       await page.waitForSelector(".ask-cancel");
       await page.locator(".ask-cancel").click();
       await page.waitForTimeout(300);
       check("[브라우저] 취소하면 처리 중 표시가 사라지고 오류 없이 처음 상태로 돌아간다", (await page.locator(".ask-cancel").count()) === 0 && (await page.locator(".ask-result .ask-error").count()) === 0 && (await page.locator(".ask-list").count()) === 0);
-      await context.close();
-    }
-
-    // --- GPT(OpenAI)·Gemini(Google): 이용자 키로 직접 호출
-    for (const [id, provider] of Object.entries(DIRECT)) {
-      const label = `[브라우저] ${provider.mode}`;
-
-      // 정상 경로 (지금 배포 설정 기준)
-      {
-        const { context, page, requests } = await openAsk(browser, base);
-        const calls = [];
-        await mockDirect(page, provider, calls, () => ({ status: 200 }));
-
-        await page.getByLabel(provider.mode, { exact: false }).check();
-        check(`${label}: 방식을 고르면 해당 서비스의 키 입력란이 나온다`, (await page.locator("label[for=ask-api-key]").innerText()) === provider.keyLabel && (await page.locator("#ask-key-help").innerText()).includes(`${provider.host}로 직접`));
-        await page.fill("#ask-question", "체육시설 안전");
-        await page.getByRole("button", { name: "질문하기" }).click();
-        check(`${label}: 키 없이 질문하면 안내가 나오고 호출하지 않는다`, (await page.locator("#ask-form-error").innerText()).includes(provider.keyLabel) && calls.length === 0);
-
-        await askDirect(page, provider);
-        await page.waitForSelector(".ask-badge");
-        const call = calls[0];
-        if (id === "openai") {
-          const format = call.body.text?.format;
-          check(`${label}: 호출 주소·키 헤더·본문(모델·구조화 출력·저장 안 함)이 설정을 따른다`, call.url === "https://api.openai.com/v1/responses" && call.headers.authorization === `Bearer ${provider.key}` && call.body.model === provider.config.model && format?.type === "json_schema" && format?.strict === true && call.body.store === false && call.body.max_output_tokens === provider.config.maxTokens && typeof call.body.instructions === "string", `${call.body.model}`);
-          check(`${label}: 질문은 <question> 안에, 샘플링 값·강제 도구는 없다`, String(call.body.input).includes("<question>") && call.body.temperature === undefined && call.body.tools === undefined && call.body.tool_choice === undefined);
-        } else {
-          check(`${label}: 호출 주소·키 헤더·본문(모델·구조화 출력)이 설정을 따른다`, call.url === `https://generativelanguage.googleapis.com/v1beta/models/${provider.config.model}:generateContent` && call.headers["x-goog-api-key"] === provider.key && call.body.generationConfig?.responseMimeType === "application/json" && call.body.generationConfig?.responseJsonSchema?.type === "object" && call.body.generationConfig?.maxOutputTokens === provider.config.maxTokens && !!call.body.systemInstruction?.parts?.[0]?.text, `${provider.config.model}`);
-          check(`${label}: 질문은 <question> 안에, 샘플링 값·도구는 없다`, userTextOf(call.body).includes("<question>") && call.body.generationConfig.temperature === undefined && call.body.tools === undefined);
-        }
-        const itemCount = await page.locator(".ask-list").first().locator(".ask-item").count();
-        check(`${label}: AI 결과: 요약·추천(후보 밖 번호 제외)·관련도·조합 표시`, itemCount === 2 && (await page.locator(".ask-summary").innerText()).includes("안전점검") && (await page.locator(".ask-relevance.high").count()) === 1 && (await page.locator(".ask-combo-grid article").count()) === 1, `추천 ${itemCount}건`);
-        check(`${label}: SDK 를 내려받지 않는다(fetch 로 직접 호출)`, !requests.some((url) => /\/assets\/chunks\/sdk-/.test(url)));
-        const stored = await page.evaluate(() => ({ local: Object.keys(localStorage).length, session: Object.keys(sessionStorage).length, cookie: document.cookie.length }));
-        check(`${label}: API 키를 어디에도 저장하지 않는다`, stored.local === 0 && stored.session === 0 && stored.cookie === 0);
-        const external = requests.filter((url) => !url.startsWith(base)).map((url) => new URL(url).origin);
-        check(`${label}: 외부로 나간 요청은 ${new URL(provider.origin).host} 뿐이고 키가 주소·본문에 없다`, external.length > 0 && external.every((origin) => origin === provider.origin) && !requests.some((url) => url.includes(provider.key)) && !JSON.stringify(call.body).includes(provider.key), [...new Set(external)].join(","));
-        await context.close();
-      }
-
-      // 구조화 출력이 거절되면 형식 지시문으로 재시도
-      {
-        const { context, page } = await openAsk(browser, base);
-        const calls = [];
-        await mockDirect(page, provider, calls, (request, body) => (provider.structured(body) ? { status: 400, error: { error: { message: "schema unsupported" } } } : { status: 200, answer: (b) => `결과입니다: ${JSON.stringify(goodAnswer(b))}` }));
-        await askDirect(page, provider);
-        await page.waitForSelector(".ask-badge");
-        const retry = calls.at(-1).body;
-        const instruction = id === "openai" ? retry.instructions : retry.systemInstruction.parts[0].text;
-        check(`${label}: 구조화 출력이 거절되면 형식 지시문을 붙여 재시도해 성공한다`, calls.length === 2 && !provider.structured(retry) && instruction.includes("JSON"), `요청 ${calls.length}회`);
-        await context.close();
-      }
-
-      // 오류별 안내 + 기본 검색 결과로 대체
-      for (const [caseLabel, plan, expected] of provider.errors) {
-        const { context, page } = await openAsk(browser, base);
-        const calls = [];
-        await mockDirect(page, provider, calls, () => plan);
-        await askDirect(page, provider);
-        await page.waitForSelector(".ask-result .ask-error[role=alert]", { timeout: 20000 });
-        const message = await page.locator(".ask-result .ask-error").innerText();
-        const fallbackItems = await page.locator(".ask-list .ask-item").count();
-        check(`${label}: ${caseLabel}: 안내 문구 + 기본 검색 결과로 대체`, message.includes(expected) && fallbackItems > 0 && (message.match(/기본 검색 결과/g) ?? []).length === 1 && !message.includes(provider.key), message.slice(0, 60));
-        // 키가 잘못된 경우는 다시 시도해도 소용없으므로 한 번만 보낸다
-        if (/잘못된 키|인증 오류|권한 없음/.test(caseLabel)) check(`${label}: ${caseLabel}: 같은 요청을 되풀이하지 않는다`, calls.length === 1, `요청 ${calls.length}회`);
-        await context.close();
-      }
-    }
-
-    // --- 방식마다 키를 따로 보관: 한 서비스의 키가 다른 서비스로 나가지 않는다
-    {
-      const { context, page, requests } = await openAsk(browser, base);
-      const calls = [];
-      await mockDirect(page, DIRECT.openai, calls, () => ({ status: 200 }));
-      await page.getByLabel("AI 추천 (Claude)", { exact: false }).check();
-      await page.fill("#ask-api-key", "sk-ant-secret-AAAA");
-      await page.getByLabel("AI 추천 (GPT)", { exact: false }).check();
-      check("[브라우저] 다른 서비스로 바꾸면 앞서 입력한 키가 따라오지 않고 입력란이 비어 있다", (await page.inputValue("#ask-api-key")) === "");
-      await page.fill("#ask-question", "체육시설 안전");
-      await page.getByRole("button", { name: "질문하기" }).click();
-      check("[브라우저] 그 상태로 질문하면 키를 요구하고, Claude 키를 OpenAI 로 보내지 않는다", (await page.locator("#ask-form-error").innerText()).includes("OpenAI API 키") && calls.length === 0);
-      await page.getByLabel("AI 추천 (Claude)", { exact: false }).check();
-      check("[브라우저] Claude 로 돌아오면 그 방식에 입력해 둔 키는 남아 있다(화면을 벗어나기 전까지)", (await page.inputValue("#ask-api-key")) === "sk-ant-secret-AAAA");
-      await askDirect(page, DIRECT.openai);
-      await page.waitForSelector(".ask-badge");
-      check("[브라우저] GPT 는 GPT 키로만 호출된다(요청 어디에도 Claude 키가 없다)", calls.length === 1 && calls[0].headers.authorization === `Bearer ${DIRECT.openai.key}` && !JSON.stringify(calls[0]).includes("sk-ant-secret") && !requests.some((url) => url.includes("sk-ant-secret")));
       await context.close();
     }
 
