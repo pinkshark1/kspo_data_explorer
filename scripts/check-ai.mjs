@@ -3,6 +3,7 @@
 //   1) 중계 서버(scripts/ai-gateway.mjs): 요청 형식, 허용 주소, 입력 검사, 호출·하루·동시 처리 한도, 폴백, 거절, 연결 끊김
 //   2) 브라우저의 Claude 직접 호출: 헤더·본문 형식(설정된 모델 기준), 결과 표시, 오류별 안내, 키 비저장, 취소·최신 질문 우선
 //   3) 브라우저의 기관 AI 서버 호출: 요청 본문, 결과 표시, 거절 처리
+//   4) 브라우저의 GPT(OpenAI)·Gemini(Google) 직접 호출: 헤더·본문 형식, 결과 표시, 오류별 안내, 키 비저장, 방식별 키 분리
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -12,7 +13,8 @@ import { chromium } from "playwright-core";
 import { createStaticServer } from "./lib/static-server.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const shippedClaude = JSON.parse(fs.readFileSync(path.join(root, "data", "site.json"), "utf8")).ai.claude; // 지금 배포 설정(모델·effort·폴백)
+const shippedAi = JSON.parse(fs.readFileSync(path.join(root, "data", "site.json"), "utf8")).ai;
+const shippedClaude = shippedAi.claude; // 지금 배포 설정(모델·effort·폴백)
 const results = [];
 const check = (name, ok, detail = "") => {
   results.push({ name, ok });
@@ -69,7 +71,9 @@ function messageResponse(plan, body) {
   };
 }
 // 요청에 들어 있는 후보 번호 중 앞의 n개 (모의 응답이 실제 후보를 가리키게)
-const candidateNosOf = (body, n = 3) => [...String(body?.messages?.[0]?.content ?? "").matchAll(/"no":(\d+)/g)].slice(0, n).map((match) => Number(match[1]));
+// 요청 본문에서 사용자 메시지를 꺼낸다. (Claude: messages, GPT: input, Gemini: contents)
+const userTextOf = (body) => String(body?.messages?.[0]?.content ?? body?.input ?? body?.contents?.[0]?.parts?.[0]?.text ?? "");
+const candidateNosOf = (body, n = 3) => [...userTextOf(body).matchAll(/"no":(\d+)/g)].slice(0, n).map((match) => Number(match[1]));
 function goodAnswer(body) {
   const [a, b, c] = candidateNosOf(body);
   return {
@@ -282,6 +286,100 @@ async function askWithClaude(page, question = "체육시설 안전과 연계할 
   await page.getByRole("button", { name: /질문하기/ }).click();
 }
 
+// ---- GPT(OpenAI)·Gemini(Google): 이용자 키로 직접 호출하는 방식의 모의 서버와 점검 정보
+// 브라우저의 사전 요청(preflight)이 통과하도록 Authorization 은 이름을 직접 적어야 한다.(와일드카드로는 허용되지 않음)
+const CORS_KEY = { ...CORS, "access-control-allow-headers": "authorization, content-type, x-goog-api-key" };
+
+function openaiResponse(plan, body) {
+  const answer = (plan.answer ?? goodAnswer)(body);
+  const text = typeof answer === "string" ? answer : JSON.stringify(answer);
+  return {
+    id: "resp_mock",
+    object: "response",
+    status: plan.responseStatus ?? "completed",
+    incomplete_details: plan.incompleteReason ? { reason: plan.incompleteReason } : null,
+    output: plan.output ? plan.output(body) : [{ id: "rs_mock", type: "reasoning", summary: [] }, { id: "msg_mock", type: "message", role: "assistant", content: [{ type: "output_text", text, annotations: [] }] }],
+    usage: { input_tokens: 10, output_tokens: 10, total_tokens: 20 },
+  };
+}
+function geminiResponse(plan, body) {
+  const answer = (plan.answer ?? goodAnswer)(body);
+  const text = typeof answer === "string" ? answer : JSON.stringify(answer);
+  const usageMetadata = { promptTokenCount: 10, candidatesTokenCount: 10, totalTokenCount: 20 };
+  if (plan.blockReason) return { promptFeedback: { blockReason: plan.blockReason }, usageMetadata };
+  return { candidates: [{ content: { role: "model", parts: plan.parts ? plan.parts(body) : [{ text: "(생각 과정은 답이 아님)", thought: true }, { text }] }, finishReason: plan.finishReason ?? "STOP", index: 0 }], usageMetadata };
+}
+
+// 방식별 점검 정보. structured(body): 요청이 구조화 출력(JSON 스키마)을 요구하는지
+const DIRECT = {
+  openai: {
+    mode: "AI 추천 (GPT)",
+    keyLabel: "OpenAI API 키",
+    host: "OpenAI",
+    origin: "https://api.openai.com",
+    key: "sk-test-openai-key-5678",
+    config: shippedAi.openai,
+    build: openaiResponse,
+    structured: (body) => !!body.text?.format,
+    errors: [
+      ["인증 오류(401)", { status: 401, error: { error: { message: "Incorrect API key provided: sk-test***5678", code: "invalid_api_key" } } }, "API 키가 올바르지 않"],
+      ["한도 초과(429)", { status: 429, error: { error: { message: "Rate limit reached" } } }, "사용 한도"],
+      ["모델 없음(404)", { status: 404, error: { error: { message: "The model does not exist" } } }, "모델"],
+      ["연결 실패", { abort: true }, "연결하지 못했습니다"],
+      ["AI 거절(refusal)", { status: 200, output: () => [{ id: "msg_mock", type: "message", role: "assistant", content: [{ type: "refusal", refusal: "죄송합니다" }] }] }, "답하지 못했습니다"],
+      ["콘텐츠 필터로 중단", { status: 200, responseStatus: "incomplete", incompleteReason: "content_filter", output: () => [] }, "답하지 못했습니다"],
+      ["응답이 도중에 끊김(max_output_tokens)", { status: 200, responseStatus: "incomplete", incompleteReason: "max_output_tokens", answer: () => '{"summary":"잘' }, "도중에 끊겼습니다"],
+      ["형식 오류", { status: 200, answer: () => "JSON 이 아닌 답변" }, "형식이 올바르지 않"],
+      ["요청 거절(400, 재시도해도 거절)", { status: 400, message: "bad request", error: { error: { message: "unsupported parameter" } } }, "요청을 거절"],
+    ],
+  },
+  gemini: {
+    mode: "AI 추천 (Gemini)",
+    keyLabel: "Gemini API 키",
+    host: "Google",
+    origin: "https://generativelanguage.googleapis.com",
+    key: "AIzaSyTestGeminiKey-1234567890",
+    config: shippedAi.gemini,
+    build: geminiResponse,
+    structured: (body) => !!body.generationConfig?.responseJsonSchema,
+    errors: [
+      ["잘못된 키(400 API_KEY_INVALID)", { status: 400, error: { error: { code: 400, message: "API key not valid. Please pass a valid API key.", status: "INVALID_ARGUMENT", details: [{ reason: "API_KEY_INVALID" }] } } }, "API 키가 올바르지 않"],
+      ["권한 없음(403)", { status: 403, error: { error: { code: 403, message: "permission denied", status: "PERMISSION_DENIED" } } }, "API 키가 올바르지 않"],
+      ["한도 초과(429)", { status: 429, error: { error: { code: 429, message: "quota", status: "RESOURCE_EXHAUSTED" } } }, "사용 한도"],
+      ["모델 없음(404)", { status: 404, error: { error: { code: 404, message: "model not found", status: "NOT_FOUND" } } }, "모델"],
+      ["연결 실패", { abort: true }, "연결하지 못했습니다"],
+      ["질문 차단(blockReason)", { status: 200, blockReason: "SAFETY" }, "답하지 못했습니다"],
+      ["답변 차단(finishReason SAFETY)", { status: 200, finishReason: "SAFETY", parts: () => [] }, "답하지 못했습니다"],
+      ["응답이 도중에 끊김(MAX_TOKENS)", { status: 200, finishReason: "MAX_TOKENS", answer: () => '{"summary":"잘' }, "도중에 끊겼습니다"],
+      ["형식 오류", { status: 200, answer: () => "JSON 이 아닌 답변" }, "형식이 올바르지 않"],
+      ["요청 거절(400, 재시도해도 거절)", { status: 400, error: { error: { code: 400, message: "invalid argument", status: "INVALID_ARGUMENT" } } }, "요청을 거절"],
+    ],
+  },
+};
+
+// 해당 서비스 주소로 가는 요청을 모의 응답으로 바꾼다. handler(request, body, 호출순번) -> plan
+async function mockDirect(page, provider, calls, handler) {
+  await page.route(`${provider.origin}/**`, async (route) => {
+    const request = route.request();
+    if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS_KEY });
+    const body = request.postDataJSON();
+    calls.push({ url: request.url(), headers: request.headers(), body });
+    const plan = handler(request, body, calls.length);
+    if (plan.delayMs) await sleep(plan.delayMs);
+    if (plan.abort) return route.abort("failed");
+    const headers = { ...CORS_KEY, "content-type": "application/json" };
+    if (plan.status !== 200) return route.fulfill({ status: plan.status, headers, body: JSON.stringify(plan.error ?? { error: { message: plan.message ?? "mock" } }) });
+    return route.fulfill({ status: 200, headers, body: JSON.stringify(provider.build(plan, body)) });
+  });
+}
+
+async function askDirect(page, provider, question = "체육시설 안전과 연계할 수 있는 데이터가 뭐 있어?", key = provider.key) {
+  await page.getByLabel(provider.mode, { exact: false }).check();
+  await page.fill("#ask-api-key", key);
+  await page.fill("#ask-question", question);
+  await page.getByRole("button", { name: /질문하기/ }).click();
+}
+
 async function checkBrowser() {
   const server = createStaticServer(root);
   const port = await listen(server);
@@ -405,6 +503,92 @@ async function checkBrowser() {
       await page.locator(".ask-cancel").click();
       await page.waitForTimeout(300);
       check("[브라우저] 취소하면 처리 중 표시가 사라지고 오류 없이 처음 상태로 돌아간다", (await page.locator(".ask-cancel").count()) === 0 && (await page.locator(".ask-result .ask-error").count()) === 0 && (await page.locator(".ask-list").count()) === 0);
+      await context.close();
+    }
+
+    // --- GPT(OpenAI)·Gemini(Google): 이용자 키로 직접 호출
+    for (const [id, provider] of Object.entries(DIRECT)) {
+      const label = `[브라우저] ${provider.mode}`;
+
+      // 정상 경로 (지금 배포 설정 기준)
+      {
+        const { context, page, requests } = await openAsk(browser, base);
+        const calls = [];
+        await mockDirect(page, provider, calls, () => ({ status: 200 }));
+
+        await page.getByLabel(provider.mode, { exact: false }).check();
+        check(`${label}: 방식을 고르면 해당 서비스의 키 입력란이 나온다`, (await page.locator("label[for=ask-api-key]").innerText()) === provider.keyLabel && (await page.locator("#ask-key-help").innerText()).includes(`${provider.host}로 직접`));
+        await page.fill("#ask-question", "체육시설 안전");
+        await page.getByRole("button", { name: "질문하기" }).click();
+        check(`${label}: 키 없이 질문하면 안내가 나오고 호출하지 않는다`, (await page.locator("#ask-form-error").innerText()).includes(provider.keyLabel) && calls.length === 0);
+
+        await askDirect(page, provider);
+        await page.waitForSelector(".ask-badge");
+        const call = calls[0];
+        if (id === "openai") {
+          const format = call.body.text?.format;
+          check(`${label}: 호출 주소·키 헤더·본문(모델·구조화 출력·저장 안 함)이 설정을 따른다`, call.url === "https://api.openai.com/v1/responses" && call.headers.authorization === `Bearer ${provider.key}` && call.body.model === provider.config.model && format?.type === "json_schema" && format?.strict === true && call.body.store === false && call.body.max_output_tokens === provider.config.maxTokens && typeof call.body.instructions === "string", `${call.body.model}`);
+          check(`${label}: 질문은 <question> 안에, 샘플링 값·강제 도구는 없다`, String(call.body.input).includes("<question>") && call.body.temperature === undefined && call.body.tools === undefined && call.body.tool_choice === undefined);
+        } else {
+          check(`${label}: 호출 주소·키 헤더·본문(모델·구조화 출력)이 설정을 따른다`, call.url === `https://generativelanguage.googleapis.com/v1beta/models/${provider.config.model}:generateContent` && call.headers["x-goog-api-key"] === provider.key && call.body.generationConfig?.responseMimeType === "application/json" && call.body.generationConfig?.responseJsonSchema?.type === "object" && call.body.generationConfig?.maxOutputTokens === provider.config.maxTokens && !!call.body.systemInstruction?.parts?.[0]?.text, `${provider.config.model}`);
+          check(`${label}: 질문은 <question> 안에, 샘플링 값·도구는 없다`, userTextOf(call.body).includes("<question>") && call.body.generationConfig.temperature === undefined && call.body.tools === undefined);
+        }
+        const itemCount = await page.locator(".ask-list").first().locator(".ask-item").count();
+        check(`${label}: AI 결과: 요약·추천(후보 밖 번호 제외)·관련도·조합 표시`, itemCount === 2 && (await page.locator(".ask-summary").innerText()).includes("안전점검") && (await page.locator(".ask-relevance.high").count()) === 1 && (await page.locator(".ask-combo-grid article").count()) === 1, `추천 ${itemCount}건`);
+        check(`${label}: SDK 를 내려받지 않는다(fetch 로 직접 호출)`, !requests.some((url) => /\/assets\/chunks\/sdk-/.test(url)));
+        const stored = await page.evaluate(() => ({ local: Object.keys(localStorage).length, session: Object.keys(sessionStorage).length, cookie: document.cookie.length }));
+        check(`${label}: API 키를 어디에도 저장하지 않는다`, stored.local === 0 && stored.session === 0 && stored.cookie === 0);
+        const external = requests.filter((url) => !url.startsWith(base)).map((url) => new URL(url).origin);
+        check(`${label}: 외부로 나간 요청은 ${new URL(provider.origin).host} 뿐이고 키가 주소·본문에 없다`, external.length > 0 && external.every((origin) => origin === provider.origin) && !requests.some((url) => url.includes(provider.key)) && !JSON.stringify(call.body).includes(provider.key), [...new Set(external)].join(","));
+        await context.close();
+      }
+
+      // 구조화 출력이 거절되면 형식 지시문으로 재시도
+      {
+        const { context, page } = await openAsk(browser, base);
+        const calls = [];
+        await mockDirect(page, provider, calls, (request, body) => (provider.structured(body) ? { status: 400, error: { error: { message: "schema unsupported" } } } : { status: 200, answer: (b) => `결과입니다: ${JSON.stringify(goodAnswer(b))}` }));
+        await askDirect(page, provider);
+        await page.waitForSelector(".ask-badge");
+        const retry = calls.at(-1).body;
+        const instruction = id === "openai" ? retry.instructions : retry.systemInstruction.parts[0].text;
+        check(`${label}: 구조화 출력이 거절되면 형식 지시문을 붙여 재시도해 성공한다`, calls.length === 2 && !provider.structured(retry) && instruction.includes("JSON"), `요청 ${calls.length}회`);
+        await context.close();
+      }
+
+      // 오류별 안내 + 기본 검색 결과로 대체
+      for (const [caseLabel, plan, expected] of provider.errors) {
+        const { context, page } = await openAsk(browser, base);
+        const calls = [];
+        await mockDirect(page, provider, calls, () => plan);
+        await askDirect(page, provider);
+        await page.waitForSelector(".ask-result .ask-error[role=alert]", { timeout: 20000 });
+        const message = await page.locator(".ask-result .ask-error").innerText();
+        const fallbackItems = await page.locator(".ask-list .ask-item").count();
+        check(`${label}: ${caseLabel}: 안내 문구 + 기본 검색 결과로 대체`, message.includes(expected) && fallbackItems > 0 && (message.match(/기본 검색 결과/g) ?? []).length === 1 && !message.includes(provider.key), message.slice(0, 60));
+        // 키가 잘못된 경우는 다시 시도해도 소용없으므로 한 번만 보낸다
+        if (/잘못된 키|인증 오류|권한 없음/.test(caseLabel)) check(`${label}: ${caseLabel}: 같은 요청을 되풀이하지 않는다`, calls.length === 1, `요청 ${calls.length}회`);
+        await context.close();
+      }
+    }
+
+    // --- 방식마다 키를 따로 보관: 한 서비스의 키가 다른 서비스로 나가지 않는다
+    {
+      const { context, page, requests } = await openAsk(browser, base);
+      const calls = [];
+      await mockDirect(page, DIRECT.openai, calls, () => ({ status: 200 }));
+      await page.getByLabel("AI 추천 (Claude)", { exact: false }).check();
+      await page.fill("#ask-api-key", "sk-ant-secret-AAAA");
+      await page.getByLabel("AI 추천 (GPT)", { exact: false }).check();
+      check("[브라우저] 다른 서비스로 바꾸면 앞서 입력한 키가 따라오지 않고 입력란이 비어 있다", (await page.inputValue("#ask-api-key")) === "");
+      await page.fill("#ask-question", "체육시설 안전");
+      await page.getByRole("button", { name: "질문하기" }).click();
+      check("[브라우저] 그 상태로 질문하면 키를 요구하고, Claude 키를 OpenAI 로 보내지 않는다", (await page.locator("#ask-form-error").innerText()).includes("OpenAI API 키") && calls.length === 0);
+      await page.getByLabel("AI 추천 (Claude)", { exact: false }).check();
+      check("[브라우저] Claude 로 돌아오면 그 방식에 입력해 둔 키는 남아 있다(화면을 벗어나기 전까지)", (await page.inputValue("#ask-api-key")) === "sk-ant-secret-AAAA");
+      await askDirect(page, DIRECT.openai);
+      await page.waitForSelector(".ask-badge");
+      check("[브라우저] GPT 는 GPT 키로만 호출된다(요청 어디에도 Claude 키가 없다)", calls.length === 1 && calls[0].headers.authorization === `Bearer ${DIRECT.openai.key}` && !JSON.stringify(calls[0]).includes("sk-ant-secret") && !requests.some((url) => url.includes("sk-ant-secret")));
       await context.close();
     }
 

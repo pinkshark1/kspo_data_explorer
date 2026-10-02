@@ -61,7 +61,9 @@
     "navLabel": "질문 검색",
     "modes": [
       "local",
-      "claude"
+      "claude",
+      "openai",
+      "gemini"
     ],
     "defaultMode": "local",
     "claude": {
@@ -69,6 +71,16 @@
       "maxTokens": 16000,
       "refusalFallback": false,
       "keyGuideUrl": "https://console.anthropic.com/settings/keys"
+    },
+    "openai": {
+      "model": "gpt-6-luna",
+      "maxTokens": 16000,
+      "keyGuideUrl": "https://platform.openai.com/api-keys"
+    },
+    "gemini": {
+      "model": "gemini-3.5-flash-lite",
+      "maxTokens": 16000,
+      "keyGuideUrl": "https://aistudio.google.com/apikey"
     },
     "gateway": {
       "url": "",

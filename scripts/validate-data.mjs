@@ -150,8 +150,10 @@ info.push(`연계 아이디어 ${site.ideas?.length ?? 0}건`);
 if (site.ai?.enabled) {
   const ai = site.ai;
   const modes = ai.modes ?? [];
-  for (const mode of modes) if (!["local", "claude", "gateway"].includes(mode)) errors.push(`site.json ai.modes 에 알 수 없는 방식이 있습니다: ${mode}`);
-  if (modes.includes("claude") && !(ai.claude?.model && ai.claude?.maxTokens)) errors.push("site.json ai.claude 에 model, maxTokens 가 필요합니다.");
+  for (const mode of modes) if (!["local", "claude", "openai", "gemini", "gateway"].includes(mode)) errors.push(`site.json ai.modes 에 알 수 없는 방식이 있습니다: ${mode}`);
+  for (const mode of ["claude", "openai", "gemini"]) {
+    if (modes.includes(mode) && !(ai[mode]?.model && ai[mode]?.maxTokens)) errors.push(`site.json ai.${mode} 에 model, maxTokens 가 필요합니다.`);
+  }
   if (modes.includes("gateway")) {
     if (!/^https:\/\//.test(ai.gateway?.url ?? "") && !/^http:\/\/(localhost|127\.0\.0\.1)/.test(ai.gateway?.url ?? "")) {
       errors.push("site.json ai.gateway.url 은 https:// 주소여야 합니다(개발용 localhost 제외).");
@@ -159,7 +161,7 @@ if (site.ai?.enabled) {
   }
   if (ai.defaultMode && !modes.concat("local").includes(ai.defaultMode)) errors.push(`site.json ai.defaultMode(${ai.defaultMode}) 가 ai.modes 에 없습니다.`);
   info.push(`질문 검색 방식: ${["local", ...modes.filter((mode) => mode !== "local")].join(", ")} (기본 ${ai.defaultMode ?? "local"})`);
-  if (JSON.stringify(site).match(/sk-ant-[A-Za-z0-9_-]{8,}/)) errors.push("site.json 에 API 키로 보이는 값이 있습니다. 키는 소스·데이터 파일에 넣지 않습니다.");
+  if (JSON.stringify(site).match(/sk-ant-[A-Za-z0-9_-]{8,}|sk-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{20,}/)) errors.push("site.json 에 API 키로 보이는 값이 있습니다. 키는 소스·데이터 파일에 넣지 않습니다.");
 }
 
 // ---------- portal-meta.json ----------

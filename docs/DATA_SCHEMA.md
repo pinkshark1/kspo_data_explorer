@@ -64,7 +64,7 @@
 | `service.scope` | 푸터의 ‘데이터 안내’ 첫 문장 (안내 범위를 밝히는 문구) |
 | `portals.public` / `portals.culture` | 포털 설정(둘 다 필요). `label`(이름), `shortLabel`(목록의 짧은 표기), `mark`(배지 글자 1자), `listUrl`(공단 데이터 목록 주소 - 원문 주소가 없을 때의 대체 링크), `homeUrl`, `termsNote`(이용 조건 문구, 문화빅데이터포털) |
 | `guide` | 사용방법 화면: `title`, `lead`, `video`, `poster`, `externalUrl`(선택), `steps[{title,text}]` |
-| `ai` | 질문 검색(AI 추천) 설정: `enabled`, `navLabel`, `modes`(`local`·`claude`·`gateway`), `defaultMode`, `claude{model,effort,maxTokens,refusalFallback,keyGuideUrl}`, `gateway{url,label}`, `exampleQuestions`, `notice`. 자세한 설명은 [AI_FEATURE.md](AI_FEATURE.md). 키는 넣지 않는다 |
+| `ai` | 질문 검색(AI 추천) 설정: `enabled`, `navLabel`, `modes`(`local`·`claude`·`openai`·`gemini`·`gateway`), `defaultMode`, `claude{model,effort,maxTokens,refusalFallback,keyGuideUrl}`, `openai{model,maxTokens,keyGuideUrl}`, `gemini{model,maxTokens,keyGuideUrl}`, `gateway{url,label}`, `exampleQuestions`, `notice`. 자세한 설명은 [AI_FEATURE.md](AI_FEATURE.md). 키는 넣지 않는다 |
 | `ideasNotice` | 연계 아이디어 화면 상단의 유의 문구 |
 | `ideas[]` | 연계 아이디어: `field`(제목), `scenario`, `data`, `partner`, `priority`(`상`/`중`/`하`), `datasetNos`(관련 데이터 번호 배열) |
 

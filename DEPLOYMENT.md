@@ -65,7 +65,7 @@ HTML이 다운로드되지 않고 화면에 표시되도록 `Content-Disposition
 - 스타일은 `assets/app.css`로 분리되어 있으며 HTML 내부 인라인 스타일 블록은 없습니다.
 - 데이터는 동일 출처의 정적 JSON만 읽습니다.
 - 서버 쓰기, 파일 업로드, 쿠키, 로그인, `localStorage` 저장 기능은 없습니다. (화면의 ‘데이터 원문’·포털 링크는 사용자가 누를 때만 새 창으로 열립니다.)
-- **외부 호출은 ‘질문 검색’의 AI 방식을 켠 경우에만, 이용자가 질문을 보낼 때** 일어납니다. 기본 검색(기본 설정)은 외부 요청이 없습니다. AI 방식은 `data/site.json` 의 `ai.modes` 로 켜고 끄며, 호출 대상은 `api.anthropic.com`(이용자 본인 키) 또는 기관 AI 서버입니다. 자세한 내용과 보안 특성은 [docs/AI_FEATURE.md](docs/AI_FEATURE.md).
+- **외부 호출은 ‘질문 검색’의 AI 방식을 켠 경우에만, 이용자가 질문을 보낼 때** 일어납니다. 기본 검색(기본 설정)은 외부 요청이 없습니다. AI 방식은 `data/site.json` 의 `ai.modes` 로 켜고 끄며, 호출 대상은 `api.anthropic.com`(Claude)·`api.openai.com`(GPT)·`generativelanguage.googleapis.com`(Gemini)(모두 이용자 본인 키) 또는 기관 AI 서버입니다. 자세한 내용과 보안 특성은 [docs/AI_FEATURE.md](docs/AI_FEATURE.md).
 - 글꼴·영상·이미지는 모두 `assets/` 의 자체 파일이며 외부 CDN을 쓰지 않습니다.
 - API 키는 소스·데이터 파일·저장소에 두지 않습니다. 이용자가 입력한 키는 브라우저 메모리에서만 쓰이고, 서버 방식의 키는 중계 서버 환경변수에만 둡니다.
 - 샘플 데이터는 개인정보가 마스킹된 값만 담습니다. 데이터를 추가할 때는 `npm run check:data` 로 마스킹되지 않은 이름·작성자 값이 없는지 확인합니다.
@@ -76,7 +76,7 @@ HTML이 다운로드되지 않고 화면에 표시되도록 `Content-Disposition
 Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; media-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
 ```
 
-질문 검색의 AI 방식을 켜면 `connect-src` 에 호출 대상을 추가합니다. (이용자 키 방식: `https://api.anthropic.com`, 서버 방식: 기관 AI 서버 주소) 기본 검색만 쓰면 위 값 그대로 둡니다.
+질문 검색의 AI 방식을 켜면 `connect-src` 에 호출 대상을 추가합니다. (이용자 키 방식: 켠 방식에 따라 `https://api.anthropic.com`·`https://api.openai.com`·`https://generativelanguage.googleapis.com`, 서버 방식: 기관 AI 서버 주소) 기본 검색만 쓰면 위 값 그대로 둡니다.
 
 일부 화면 요소의 동적 위치·크기 표현을 위해 React가 요소의 `style` 속성을 사용하므로 `style-src 'unsafe-inline'`이 필요할 수 있습니다. 실제 운영 CSP는 홈페이지 운영·보안 담당자의 검토를 거쳐 확정합니다.
 

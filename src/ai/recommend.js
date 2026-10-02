@@ -5,7 +5,12 @@ import { AiError } from "./errors.js";
 import { LIMITS, buildSystemPrompt, buildUserMessage, parseAiResponse, summarizeCandidate } from "./prompt.js";
 import { askClaude } from "./providers/claude.js";
 import { askGateway } from "./providers/gateway.js";
+import { askGemini } from "./providers/gemini.js";
+import { askOpenAI } from "./providers/openai.js";
 import { search } from "./retrieval.js";
+
+// 이용자 본인의 API 키로 브라우저에서 직접 부르는 방식. 설정은 site.json 의 ai.<방식> 에 있다.
+const KEY_PROVIDERS = { claude: askClaude, openai: askOpenAI, gemini: askGemini };
 
 const CANDIDATE_LIMIT = 30; // 검색이 잘 될 때 LLM 에 보내는 후보 수
 const FULL_CATALOG_COMPACT_FROM = 60; // 후보가 이보다 많으면 이름·분야만 보내 토큰을 아낀다
@@ -33,10 +38,10 @@ export function selectCandidates(index, store, question) {
 /**
  * @param {object} args
  * @param {string} args.question
- * @param {"local"|"claude"|"gateway"} args.mode
+ * @param {"local"|"claude"|"openai"|"gemini"|"gateway"} args.mode
  * @param {object} args.store   loadAppData() 결과
  * @param {object} args.index   buildIndex() 결과
- * @param {string} [args.apiKey] claude 모드에서 이용자가 입력한 키
+ * @param {string} [args.apiKey] claude·openai·gemini 모드에서 이용자가 입력한 키 (그 방식의 키여야 한다)
  * @param {AbortSignal} [args.signal]
  */
 export async function recommend({ question, mode, store, index, apiKey, signal }) {
@@ -73,9 +78,9 @@ export async function recommend({ question, mode, store, index, apiKey, signal }
     result.strategy = strategy;
 
     let text;
-    if (mode === "claude") {
+    if (Object.hasOwn(KEY_PROVIDERS, mode) && aiConfig[mode]) {
       const system = buildSystemPrompt({ orgName: store.site.organization.name, serviceName: store.site.service.fullName });
-      text = await askClaude({ apiKey, config: aiConfig.claude, system, userMessage: buildUserMessage(trimmed, candidates), signal });
+      text = await KEY_PROVIDERS[mode]({ apiKey, config: aiConfig[mode], system, userMessage: buildUserMessage(trimmed, candidates), signal });
     } else if (mode === "gateway") {
       text = await askGateway({ url: aiConfig.gateway.url, question: trimmed, candidates, signal });
     } else {

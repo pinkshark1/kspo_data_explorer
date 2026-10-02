@@ -5,12 +5,21 @@ import { recommend } from "../ai/recommend.js";
 
 const RELEVANCE_LABEL = { high: "관련도 높음", medium: "관련도 보통", low: "참고" };
 
+// 이용자 본인의 API 키로 이 브라우저에서 직접 부르는 방식. 모델·안내 주소는 site.json 의 ai.<방식> 에 있다.
+const KEY_MODES = {
+  claude: { name: "Claude", target: "Anthropic(Claude)", host: "Anthropic", keyLabel: "Claude API 키", placeholder: "sk-ant-..." },
+  openai: { name: "GPT", target: "OpenAI(GPT)", host: "OpenAI", keyLabel: "OpenAI API 키", placeholder: "sk-..." },
+  gemini: { name: "Gemini", target: "Google(Gemini)", host: "Google", keyLabel: "Gemini API 키", placeholder: "AIza..." },
+};
+
 // 설정(site.json ai.modes)에서 켜진 방식만 보여준다. 기본 검색은 항상 있다.
 function availableModes(ai) {
   const wanted = ai.modes ?? ["local"];
   const modes = [{ id: "local", label: "기본 검색", hint: "AI를 쓰지 않고 이 브라우저 안에서만 찾습니다." }];
-  if (wanted.includes("claude") && ai.claude) {
-    modes.push({ id: "claude", label: "AI 추천 (Claude)", hint: `내 Claude API 키로 ${ai.claude.model} 모델에 물어봅니다.` });
+  for (const [id, info] of Object.entries(KEY_MODES)) {
+    if (wanted.includes(id) && ai[id]) {
+      modes.push({ id, label: `AI 추천 (${info.name})`, hint: `내 ${info.keyLabel}로 ${ai[id].model} 모델에 물어봅니다.` });
+    }
   }
   if (wanted.includes("gateway") && ai.gateway?.url) {
     modes.push({ id: "gateway", label: `AI 추천 (${ai.gateway.label || "기관 AI 서버"})`, hint: "기관이 운영하는 AI 서버에 물어봅니다. 키는 필요 없습니다." });
@@ -63,7 +72,11 @@ export default function AskView({ store, saved, onSave, onOpenDataset }) {
   const defaultMode = modes.some((entry) => entry.id === ai.defaultMode) ? ai.defaultMode : "local";
   const [mode, setMode] = useState(modes.some((entry) => entry.id === saved?.mode) ? saved.mode : defaultMode);
   const [question, setQuestion] = useState(saved?.question ?? "");
-  const [apiKey, setApiKey] = useState(""); // 이 화면의 메모리에만 있다. 저장하지 않고, 화면을 벗어나면 사라진다.
+  // 방식별 API 키. 이 화면의 메모리에만 있다. 저장하지 않고, 화면을 벗어나면 사라진다.
+  // 방식마다 따로 두는 이유: 다른 서비스를 고른 채 질문해도 앞서 입력한 키가 엉뚱한 서비스로 나가지 않게 하려고.
+  const [keys, setKeys] = useState({});
+  const keyMode = KEY_MODES[mode]; // 키를 입력해야 하는 방식이면 그 정보, 아니면 undefined
+  const apiKey = keys[mode] ?? "";
   const [status, setStatus] = useState(saved?.result ? "done" : "idle"); // idle | loading | done
   const [result, setResult] = useState(saved?.result ?? null);
   const [formError, setFormError] = useState("");
@@ -88,8 +101,8 @@ export default function AskView({ store, saved, onSave, onOpenDataset }) {
       questionRef.current?.focus();
       return;
     }
-    if (mode === "claude" && !apiKey.trim()) {
-      setFormError("AI 추천을 쓰려면 Claude API 키를 입력해 주세요. 키 없이 쓰려면 ‘기본 검색’을 선택하세요.");
+    if (keyMode && !apiKey.trim()) {
+      setFormError(`AI 추천을 쓰려면 ${keyMode.keyLabel}를 입력해 주세요. 키 없이 쓰려면 ‘기본 검색’을 선택하세요.`);
       keyRef.current?.focus();
       return;
     }
@@ -131,7 +144,7 @@ export default function AskView({ store, saved, onSave, onOpenDataset }) {
 
   const modeInfo = modes.find((entry) => entry.id === mode);
   const isAi = mode !== "local";
-  const sendTarget = mode === "claude" ? "Anthropic(Claude)" : ai.gateway?.label || "기관 AI 서버";
+  const sendTarget = keyMode ? keyMode.target : ai.gateway?.label || "기관 AI 서버";
   const loading = status === "loading";
 
   return (
@@ -158,9 +171,9 @@ export default function AskView({ store, saved, onSave, onOpenDataset }) {
           </fieldset>
         )}
 
-        {mode === "claude" && (
+        {keyMode && (
           <div className="ask-key">
-            <label htmlFor="ask-api-key">Claude API 키</label>
+            <label htmlFor="ask-api-key">{keyMode.keyLabel}</label>
             <input
               id="ask-api-key"
               ref={keyRef}
@@ -170,16 +183,16 @@ export default function AskView({ store, saved, onSave, onOpenDataset }) {
               data-1p-ignore="true"
               spellCheck={false}
               value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              placeholder="sk-ant-..."
+              onChange={(event) => setKeys((current) => ({ ...current, [mode]: event.target.value }))}
+              placeholder={keyMode.placeholder}
               aria-describedby="ask-key-help"
             />
             <p id="ask-key-help">
-              입력한 키는 이 브라우저의 메모리에서만 쓰이며 저장되지 않고, 이 화면을 벗어나면 사라집니다. 호출은 이 브라우저에서 Anthropic으로 직접 이루어집니다.
-              {ai.claude?.keyGuideUrl && (
+              입력한 키는 이 브라우저의 메모리에서만 쓰이며 저장되지 않고, 이 화면을 벗어나면 사라집니다. 호출은 이 브라우저에서 {keyMode.host}로 직접 이루어집니다.
+              {ai[mode]?.keyGuideUrl && (
                 <>
                   {" "}
-                  <a href={ai.claude.keyGuideUrl} target="_blank" rel="noreferrer">
+                  <a href={ai[mode].keyGuideUrl} target="_blank" rel="noreferrer">
                     API 키 발급 안내 <span>(새 창 · 외부 사이트)</span>
                   </a>
                 </>
