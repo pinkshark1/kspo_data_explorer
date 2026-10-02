@@ -21,6 +21,7 @@ export default function DatasetProfile({
   related,
   tab,
   portalInfo,
+  orgCallName,
   infoRows,
   metaFetchedAt,
   onChangeTab,
@@ -87,11 +88,11 @@ export default function DatasetProfile({
                 href={portalInfo.listUrl}
                 target="_blank"
                 rel="noreferrer"
-                title={`새 창에서 ${portalInfo.label}의 공단 데이터 목록으로 이동합니다`}
+                title={`새 창에서 ${portalInfo.label}의 ${orgCallName} 데이터 목록으로 이동합니다`}
               >
                 ↗ {portalInfo.label}에서 찾기
               </a>
-              <p className="source-missing">이 데이터는 원문 페이지 주소가 아직 연결되지 않았습니다. 포털의 공단 데이터 목록에서 같은 이름의 데이터를 찾을 수 있습니다.</p>
+              <p className="source-missing">이 데이터는 원문 페이지 주소가 아직 연결되지 않았습니다. 포털의 {orgCallName} 데이터 목록에서 같은 이름의 데이터를 찾을 수 있습니다.</p>
             </>
           )}
         </div>

@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "organization": {
+    "name": "대한체육회",
+    "shortName": "대한체육회"
+  },
+  "service": {
+    "name": "데이터 지도",
+    "fullName": "대한체육회 데이터 지도 (이식 시험)",
+    "bannerText": "이 화면은 KSPO 데이터 지도를 다른 기관 공개데이터로 옮겨 본 이식 시험본입니다.",
+    "scope": "공공데이터포털에 개방된 대한체육회 데이터(이식 시험 시점 23건)를 안내합니다. 대한체육회가 운영하는 서비스가 아닙니다."
+  },
+  "portals": {
+    "public": {
+      "label": "공공데이터포털",
+      "shortLabel": "공공",
+      "mark": "공",
+      "homeUrl": "https://www.data.go.kr",
+      "listUrl": "https://www.data.go.kr/tcs/dss/selectDataSetList.do?dType=&keyword=&orgNm=%EB%8C%80%ED%95%9C%EC%B2%B4%EC%9C%A1%ED%9A%8C&conditionType=search"
+    },
+    "culture": {
+      "label": "문화빅데이터포털",
+      "shortLabel": "문화",
+      "mark": "문",
+      "homeUrl": "https://www.bigdata-culture.kr",
+      "listUrl": "https://www.bigdata-culture.kr",
+      "termsNote": "문화빅데이터플랫폼 이용약관·저작권정책이 적용됩니다."
+    }
+  },
+  "ai": {
+    "enabled": true,
+    "navLabel": "질문 검색",
+    "modes": [
+      "local"
+    ],
+    "defaultMode": "local",
+    "exampleQuestions": [
+      "전국체전 메달 기록을 볼 수 있는 데이터가 있어?",
+      "선수와 지도자 등록 현황을 함께 보고 싶어",
+      "종목별 경기 결과 데이터는?"
+    ],
+    "notice": "추천 결과는 참고용입니다. 데이터의 정확한 내용과 이용 조건은 원문 포털에서 확인해 주세요."
+  },
+  "ideasNotice": "",
+  "ideas": []
+}

@@ -2,7 +2,8 @@
   "schemaVersion": 1,
   "organization": {
     "name": "국민체육진흥공단",
-    "shortName": "KSPO"
+    "shortName": "KSPO",
+    "callName": "공단"
   },
   "service": {
     "name": "데이터 지도",

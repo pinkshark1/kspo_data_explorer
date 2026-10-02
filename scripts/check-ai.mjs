@@ -103,7 +103,8 @@ async function startGateway({ upstreamPort, env = {} }) {
       if (String(data).includes("AI 중계 서버")) resolve();
     });
     child.on("exit", (code) => reject(new Error(`중계 서버가 종료되었습니다(code ${code}): ${output.stderr}`)));
-    setTimeout(() => reject(new Error("중계 서버가 시작되지 않았습니다.")), 8000);
+    // 다른 점검(check:ui 등) 바로 뒤에 이어 돌리면 PC 가 바빠 시작이 늦을 수 있어 넉넉히 기다린다
+    setTimeout(() => reject(new Error("중계 서버가 시작되지 않았습니다.")), 20000);
   });
   return { child, url: `http://127.0.0.1:${port}`, output };
 }
@@ -289,6 +290,7 @@ const GEMINI = {
     ["권한 없음(403)", { status: 403, error: { error: { code: 403, message: "permission denied", status: "PERMISSION_DENIED" } } }, "API 키가 올바르지 않"],
     ["한도 초과(429)", { status: 429, error: { error: { code: 429, message: "quota", status: "RESOURCE_EXHAUSTED" } } }, "사용 한도"],
     ["모델 없음(404)", { status: 404, error: { error: { code: 404, message: "model not found", status: "NOT_FOUND" } } }, "모델"],
+    ["서버 일시 오류(503, 다시 보내도 실패)", { status: 503, error: { error: { code: 503, message: "The model is overloaded. Please try again later.", status: "UNAVAILABLE" } } }, "일시적으로 응답하지 못했습니다"],
     ["연결 실패", { abort: true }, "연결하지 못했습니다"],
     ["질문 차단(blockReason)", { status: 200, blockReason: "SAFETY" }, "답하지 못했습니다"],
     ["답변 차단(finishReason SAFETY)", { status: 200, finishReason: "SAFETY", parts: () => [] }, "답하지 못했습니다"],
@@ -385,6 +387,17 @@ async function checkBrowser() {
       await context.close();
     }
 
+    // --- 서비스 쪽 일시 오류(503)는 잠시 뒤 같은 요청을 한 번 더 보내 성공한다
+    {
+      const { context, page } = await openAsk(browser, base);
+      const calls = [];
+      await mockGemini(page, calls, (request, body, n) => (n === 1 ? { status: 503, error: { error: { code: 503, message: "The model is overloaded. Please try again later.", status: "UNAVAILABLE" } } } : { status: 200 }));
+      await askGeminiMode(page);
+      await page.waitForSelector(".ask-badge", { timeout: 20000 });
+      check("[브라우저] 일시 오류(503) 뒤 같은 요청을 한 번 더 보내 결과를 보여 준다(오류 안내 없음)", calls.length === 2 && JSON.stringify(calls[0].body) === JSON.stringify(calls[1].body) && (await page.locator(".ask-result .ask-error").count()) === 0, `요청 ${calls.length}회`);
+      await context.close();
+    }
+
     // --- 모델 선택: 같은 키로 다른 모델(Gemma 등)을 고르면 그 모델로 호출한다
     {
       const { configFor } = await import("../src/ai/recommend.js");
@@ -432,6 +445,7 @@ async function checkBrowser() {
       check(`[브라우저] ${caseLabel}: 안내 문구 + 기본 검색 결과로 대체`, message.includes(expected) && fallbackItems > 0 && (message.match(/기본 검색 결과/g) ?? []).length === 1 && !message.includes(GEMINI.key), message.slice(0, 60));
       // 키가 잘못된 경우는 다시 시도해도 소용없으므로 한 번만 보낸다
       if (/잘못된 키|권한 없음/.test(caseLabel)) check(`[브라우저] ${caseLabel}: 같은 요청을 되풀이하지 않는다`, calls.length === 1, `요청 ${calls.length}회`);
+      if (/일시 오류/.test(caseLabel)) check(`[브라우저] ${caseLabel}: 한 번만 다시 보내고 멈춘다`, calls.length === 2, `요청 ${calls.length}회`);
       await context.close();
     }
 

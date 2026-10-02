@@ -9,9 +9,13 @@ const NAV_ITEMS = [
 // 상단 안내띠 + 로고 + 주요 메뉴 + 전체 검색
 export default function SiteHeader({ site, view, onChangeView, onGoHome, query, onChangeQuery, onSubmitSearch }) {
   // site.json 에 guide 가 없으면(사용방법을 만들지 않은 기관) 메뉴에서 뺀다.
+  // 연계 아이디어가 없는 기관도 같은 방식으로 메뉴에서 뺀다.
   const navItems = NAV_ITEMS.filter((item) => item.id !== "guide" || site.guide)
+    .filter((item) => item.id !== "ideas" || site.ideas?.length)
     .filter((item) => item.id !== "ask" || site.ai?.enabled)
     .map((item) => (item.id === "ask" ? { ...item, label: site.ai?.navLabel ?? item.label } : item));
+  // 로고 글자: organization.mark 가 없으면 약칭의 첫 글자 (KSPO → K)
+  const mark = site.organization.mark || site.organization.shortName.slice(0, 1);
   return (
     <>
       <a className="skip-link" href="#main-content">
@@ -20,14 +24,14 @@ export default function SiteHeader({ site, view, onChangeView, onGoHome, query, 
       <div className="service-banner">
         <div>
           <span className="service-banner-mark" aria-hidden="true">
-            K
+            {mark}
           </span>
           <p>{site.service.bannerText}</p>
         </div>
       </div>
       <header className="topbar">
         <button className="brand" onClick={onGoHome} aria-label="데이터 탐색 홈">
-          <span className="brand-mark">K</span>
+          <span className="brand-mark">{mark}</span>
           <span className="brand-copy">
             <small>{site.organization.name}</small>
             <strong>{site.service.name}</strong>

@@ -19,7 +19,7 @@ const CYCLE_GROUPS = [
   { label: "일 1회", raw: ["Daily"] },
   { label: "월 1회", raw: ["Monthly"] },
   { label: "연 1회", raw: ["Yearly", "연간"] },
-  { label: "수시", raw: ["비주기", "수시"] },
+  { label: "수시", raw: ["비주기", "수시", "수시 (1회성 데이터)"] },
 ];
 export const isKnownCycle = (cycle) => CYCLE_GROUPS.some((group) => group.raw.includes(cycle));
 export const cycleLabel = (cycle) => CYCLE_GROUPS.find((group) => group.raw.includes(cycle))?.label ?? (cycle || "확인 필요");

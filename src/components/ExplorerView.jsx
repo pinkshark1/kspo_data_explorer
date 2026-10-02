@@ -18,6 +18,7 @@ export default function ExplorerView({
   tab,
   portals,
   portalInfo,
+  orgCallName,
   infoRows,
   metaFetchedAt,
   onChangeTab,
@@ -131,6 +132,7 @@ export default function ExplorerView({
           related={related}
           tab={tab}
           portalInfo={portalInfo}
+          orgCallName={orgCallName}
           infoRows={infoRows}
           metaFetchedAt={metaFetchedAt}
           onChangeTab={onChangeTab}

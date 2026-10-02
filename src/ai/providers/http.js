@@ -2,6 +2,25 @@
 import { AiError } from "../errors.js";
 
 const TIMEOUT_MS = 90_000;
+// 서비스 쪽 일시 오류(내부 오류·과부하·중계 오류). 키·요청과 무관해 잠시 뒤 다시 보내면 되는 경우가 많다.
+export const TRANSIENT_STATUSES = new Set([500, 502, 503, 504]);
+
+// ms 만큼 기다린다. 기다리는 동안 이용자가 취소하면 바로 멈춘다.
+export function pause(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const cancelled = () => new AiError("cancelled", "요청을 취소했습니다.");
+    if (signal?.aborted) return reject(cancelled());
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(cancelled());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 /**
  * JSON 을 POST 하고 { status, data } 를 돌려준다. data 는 응답 본문을 JSON 으로 읽은 값(읽지 못하면 null).
@@ -47,6 +66,7 @@ export function httpError(status, { service, model }) {
   if (status === 401 || status === 403) return new AiError("key", "API 키가 올바르지 않거나 이 모델을 쓸 권한이 없습니다. 키를 확인해 주세요.");
   if (status === 429) return new AiError("rate", "요청이 너무 많거나 사용 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.");
   if (status === 404) return new AiError("server", `${service} 서비스에서 설정된 모델(${model})을 찾지 못했습니다. 관리자에게 알려 주세요.`);
+  if (TRANSIENT_STATUSES.has(status)) return new AiError("server", `${service} 서비스가 일시적으로 응답하지 못했습니다. (${status}) 잠시 후 다시 시도하거나 다른 모델을 골라 보세요.`);
   return new AiError("server", `${service} 서비스 오류입니다. (${status})`);
 }
 

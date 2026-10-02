@@ -13,6 +13,7 @@ import { AiError } from "../src/ai/errors.js";
 import { buildSystemPrompt, buildUserMessage, parseAiResponse, summarizeCandidate } from "../src/ai/prompt.js";
 import { configFor } from "../src/ai/recommend.js";
 import { askGemini } from "../src/ai/providers/gemini.js";
+import { TRANSIENT_STATUSES } from "../src/ai/providers/http.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const site = JSON.parse(fs.readFileSync(path.join(root, "data", "site.json"), "utf8"));
@@ -39,13 +40,29 @@ const system = buildSystemPrompt({ orgName: site.organization.name, serviceName:
 const userMessage = buildUserMessage(question, candidates);
 
 // 요청이 몇 번, 어떤 상태로 갔는지만 센다. (단계별 재시도 확인용. 주소·헤더·키는 기록하지 않는다)
+// 오류 응답은 Google 이 붙이는 오류 종류(UNAVAILABLE 등 영문 대문자 코드)만 함께 적는다. 오류 문장은 적지 않는다.
 const statuses = [];
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (...args) => {
   const response = await realFetch(...args);
-  statuses.push(response.status);
+  const entry = { status: response.status, reason: "" };
+  statuses.push(entry);
+  if (!response.ok) {
+    try {
+      const reason = String((await response.clone().json())?.error?.status ?? "");
+      if (/^[A-Z_]{1,40}$/.test(reason)) entry.reason = reason;
+    } catch {
+      // 본문이 JSON 이 아니면 상태 코드만 적는다
+    }
+  }
   return response;
 };
+const statusText = () => statuses.map((entry) => (entry.reason ? `${entry.status} ${entry.reason}` : entry.status)).join("→") || "-";
+
+// Google 쪽 일시 오류(5xx)·연결 실패는 화면의 자동 재시도(1회)와 별도로, 점검 기록을 위해 더 기다렸다가 다시 시도한다.
+const RETRY_WAITS_MS = [20_000, 60_000]; // 2·3번째 시도 전에 기다리는 시간
+const isTransient = (error) => error instanceof AiError && (error.code === "network" || (error.code === "server" && TRANSIENT_STATUSES.has(statuses.at(-1)?.status)));
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const wanted = process.argv.slice(2);
 const entries = (aiConfig.models?.length ? aiConfig.models : [{ model: aiConfig.model, label: aiConfig.model }]).filter((entry) => !wanted.length || wanted.includes(entry.model));
@@ -56,27 +73,42 @@ if (!entries.length) {
 
 console.log(`질문: ${question}\n후보 ${candidates.length}건 · 모델 ${entries.length}개 점검 (키는 출력하지 않음)\n`);
 let failed = 0;
+let transientFailed = 0;
 for (const entry of entries) {
-  statuses.length = 0;
-  const started = Date.now();
-  try {
-    const text = await askGemini({ apiKey, config: configFor(aiConfig, entry.model), system, userMessage, signal: AbortSignal.timeout(90_000) });
-    const parsed = parseAiResponse(text, candidates.map((candidate) => candidate.no));
-    const seconds = ((Date.now() - started) / 1000).toFixed(1);
-    if (!parsed) {
+  for (let attempt = 1; ; attempt += 1) {
+    statuses.length = 0;
+    const started = Date.now();
+    const tag = attempt > 1 ? `  [${attempt}번째 시도]` : "";
+    try {
+      // 화면의 자동 재시도(1회)까지 끝날 수 있게 요청 한 번의 시간 제한(90초)보다 넉넉히 둔다
+      const text = await askGemini({ apiKey, config: configFor(aiConfig, entry.model), system, userMessage, signal: AbortSignal.timeout(150_000) });
+      const parsed = parseAiResponse(text, candidates.map((candidate) => candidate.no));
+      const seconds = ((Date.now() - started) / 1000).toFixed(1);
+      if (!parsed) {
+        failed += 1;
+        console.log(`✘ ${entry.model}  ${seconds}s  호출은 됐지만 응답이 형식에 맞지 않아 읽지 못했습니다. (요청 ${statuses.length}회: ${statusText()})${tag}`);
+        console.log(`    응답 앞부분: ${text.replace(/\s+/g, " ").slice(0, 160)}`);
+      } else {
+        console.log(`✔ ${entry.model}  ${seconds}s  추천 ${parsed.recommendations.length}건 · 조합 ${parsed.combinations.length}건  (요청 ${statuses.length}회: ${statusText()})${tag}`);
+        console.log(`    요약: ${parsed.summary.slice(0, 120)}`);
+        if (!parsed.recommendations.length) console.log("    (추천이 비어 있습니다. 모델이 후보 중 맞는 것이 없다고 답한 경우일 수 있습니다.)");
+      }
+      break;
+    } catch (error) {
+      const detail = error instanceof AiError ? `${error.message} [${error.code}]` : String(error?.message ?? error);
+      const transient = isTransient(error);
+      const wait = transient ? RETRY_WAITS_MS[attempt - 1] : undefined;
+      console.log(`${wait ? "…" : "✘"} ${entry.model}  ${((Date.now() - started) / 1000).toFixed(1)}s  ${detail}  (요청 ${statuses.length}회: ${statusText()})${tag}${wait ? `  → Google 쪽 일시 오류라 ${wait / 1000}초 뒤 다시 시도합니다` : ""}`);
+      if (wait) {
+        await sleep(wait);
+        continue;
+      }
       failed += 1;
-      console.log(`✘ ${entry.model}  ${seconds}s  호출은 됐지만 응답이 형식에 맞지 않아 읽지 못했습니다. (요청 ${statuses.length}회: ${statuses.join("→")})`);
-      console.log(`    응답 앞부분: ${text.replace(/\s+/g, " ").slice(0, 160)}`);
-    } else {
-      console.log(`✔ ${entry.model}  ${seconds}s  추천 ${parsed.recommendations.length}건 · 조합 ${parsed.combinations.length}건  (요청 ${statuses.length}회: ${statuses.join("→")})`);
-      console.log(`    요약: ${parsed.summary.slice(0, 120)}`);
-      if (!parsed.recommendations.length) console.log("    (추천이 비어 있습니다. 모델이 후보 중 맞는 것이 없다고 답한 경우일 수 있습니다.)");
+      if (transient) transientFailed += 1;
+      break;
     }
-  } catch (error) {
-    failed += 1;
-    const detail = error instanceof AiError ? `${error.message} [${error.code}]` : String(error?.message ?? error);
-    console.log(`✘ ${entry.model}  ${((Date.now() - started) / 1000).toFixed(1)}s  ${detail}  (요청 ${statuses.length}회: ${statuses.join("→") || "-"})`);
   }
 }
 console.log(failed ? `\n${failed}개 모델이 되지 않았습니다.` : "\n모든 모델이 정상입니다.");
+if (transientFailed) console.log("500·503 같은 5xx 오류는 Google 서버 쪽 일시 오류(과부하 등)로, 키·한도 문제가 아닙니다. 몇 분 뒤 다시 실행하세요.");
 process.exit(failed ? 1 : 0);

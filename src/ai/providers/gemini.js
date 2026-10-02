@@ -2,9 +2,12 @@
 // 이용자가 입력한 키로 브라우저에서 호출하며, 키는 저장하지 않고 이 페이지의 메모리에서만 쓴다. (키는 주소가 아니라 헤더로 보낸다)
 import { AiError } from "../errors.js";
 import { AI_SCHEMA, FORMAT_HINT } from "../prompt.js";
-import { badRequestError, httpError, postJson } from "./http.js";
+import { TRANSIENT_STATUSES, badRequestError, httpError, pause, postJson } from "./http.js";
 
 const SERVICE = "Gemini";
+// 일시 오류(500·503 등)는 Google 안내대로 잠시 뒤 한 번 더 보낸다. 오래 기다린 끝에 난 오류는 이용자를 더 기다리게 하지 않도록 다시 보내지 않는다.
+const RETRY_AFTER_MS = 2000;
+const RETRY_IF_FAILED_WITHIN_MS = 20_000;
 const endpointOf = (model) => `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 // 안전·정책 때문에 답을 만들지 않은 경우의 finishReason
 const BLOCKED_REASONS = new Set(["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION", "IMAGE_SAFETY", "LANGUAGE"]);
@@ -47,9 +50,16 @@ export async function askGemini({ apiKey, config, system, userMessage, signal })
     generationConfig: { maxOutputTokens: config.maxTokens, ...(level <= 1 ? { responseMimeType: "application/json" } : {}), ...(level === 0 ? { responseJsonSchema: AI_SCHEMA } : {}) },
   });
 
+  const send = (level) => postJson({ url: endpointOf(config.model), headers: { "x-goog-api-key": apiKey }, body: buildRequest(level), signal, service: SERVICE });
+
   let last;
   for (const level of levels) {
-    last = await postJson({ url: endpointOf(config.model), headers: { "x-goog-api-key": apiKey }, body: buildRequest(level), signal, service: SERVICE });
+    const started = Date.now();
+    last = await send(level);
+    if (TRANSIENT_STATUSES.has(last.status) && Date.now() - started < RETRY_IF_FAILED_WITHIN_MS) {
+      await pause(RETRY_AFTER_MS, signal);
+      last = await send(level);
+    }
     if (last.status !== 400) break;
     if (isInvalidKey(last.data)) throw httpError(401, { service: SERVICE, model: config.model });
   }

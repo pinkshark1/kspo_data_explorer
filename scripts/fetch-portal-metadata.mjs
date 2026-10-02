@@ -12,16 +12,21 @@ import { fileURLToPath } from "node:url";
 import { parseCulturePublisher } from "./lib/culture-publisher.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const dataFile = path.join(root, "data", "explorer-data.json");
-const outFile = path.join(root, "data", "portal-meta.json");
+// --data <폴더> 를 주면 그 폴더의 explorer-data.json 을 읽고 같은 폴더에 portal-meta.json 을 쓴다. (다른 기관 시험: examples/…/data)
+const allArgs = process.argv.slice(2);
+const dataArg = allArgs.indexOf("--data");
+const dataDir = dataArg >= 0 ? path.resolve(root, allArgs[dataArg + 1] ?? "") : path.join(root, "data");
+const dataFile = path.join(dataDir, "explorer-data.json");
+const outFile = path.join(dataDir, "portal-meta.json");
 
-// 인자는 데이터 번호(숫자)만 허용한다. (--help 같은 알 수 없는 옵션이 전체 수집·덮어쓰기로 이어지지 않게)
-const args = process.argv.slice(2);
+// 그 밖의 인자는 데이터 번호(숫자)만 허용한다. (--help 같은 알 수 없는 옵션이 전체 수집·덮어쓰기로 이어지지 않게)
+const args = dataArg >= 0 ? allArgs.filter((_, index) => index !== dataArg && index !== dataArg + 1) : allArgs;
 const invalid = args.filter((arg) => !/^\d+$/.test(arg));
-if (invalid.length) {
-  console.error(`알 수 없는 인자: ${invalid.join(" ")}
+if (invalid.length || (dataArg >= 0 && !fs.existsSync(dataFile))) {
+  console.error(`${invalid.length ? `알 수 없는 인자: ${invalid.join(" ")}` : `--data 폴더에 explorer-data.json 이 없습니다: ${dataDir}`}
 사용법: npm run fetch:meta            (전체 수집 후 data/portal-meta.json 저장)
-        node scripts/fetch-portal-metadata.mjs 108 109   (지정한 번호만 확인, 저장 안 함)`);
+        node scripts/fetch-portal-metadata.mjs 108 109   (지정한 번호만 확인, 저장 안 함)
+        node scripts/fetch-portal-metadata.mjs --data examples/korea-sports-council/data   (다른 데이터 폴더)`);
   process.exit(2);
 }
 const onlyNos = args.map(Number);

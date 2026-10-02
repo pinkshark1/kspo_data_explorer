@@ -137,6 +137,7 @@ export default function App({ data }) {
           tab={tab}
           portals={site.portals}
           portalInfo={site.portals[portalOf(selected)]}
+          orgCallName={site.organization.callName || site.organization.name}
           infoRows={infoRows}
           metaFetchedAt={data.portalMetaFetchedAt}
           onChangeTab={setTab}

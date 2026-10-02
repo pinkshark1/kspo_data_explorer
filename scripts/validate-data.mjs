@@ -12,16 +12,20 @@ import { PAYLOAD } from "../src/lib/data.js";
 import { parseCulturePublisher } from "./lib/culture-publisher.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const readJson = (file) => JSON.parse(fs.readFileSync(path.join(root, file), "utf8"));
+// --data <폴더> 를 주면 그 폴더의 데이터 파일을 점검한다. (기본: data/, 다른 기관 시험: examples/…/data)
+const dataArg = process.argv.indexOf("--data");
+const dataDir = dataArg >= 0 ? path.resolve(root, process.argv[dataArg + 1] ?? "") : path.join(root, "data");
+const readJson = (file) => JSON.parse(fs.readFileSync(path.join(dataDir, file), "utf8"));
+if (dataArg >= 0) console.log(`점검 대상: ${path.relative(root, dataDir)}`);
 
 const errors = [];
 const warnings = [];
 const info = [];
 
-const explorer = readJson("data/explorer-data.json");
-const site = readJson("data/site.json");
-const portalMetaFile = path.join(root, "data", "portal-meta.json");
-const portalMeta = fs.existsSync(portalMetaFile) ? readJson("data/portal-meta.json") : null;
+const explorer = readJson("explorer-data.json");
+const site = readJson("site.json");
+const portalMetaFile = path.join(dataDir, "portal-meta.json");
+const portalMeta = fs.existsSync(portalMetaFile) ? readJson("portal-meta.json") : null;
 
 // ---------- explorer-data.json ----------
 const payloads = explorer.payloads;
@@ -136,9 +140,11 @@ if (authorNames.length) info.push(`검토 완료(공개 저작물 정보로 유�
 if (contactLike.length) info.push(`검토 완료(공개된 시설·업체 연락처로 유지) 전화번호 모양 값이 있는 컬럼 ${new Set(contactLike).size}곳`);
 
 // ---------- site.json ----------
-for (const key of ["organization", "service", "portals", "guide", "ideas"]) {
+for (const key of ["organization", "service", "portals", "ideas"]) {
   if (!site[key]) errors.push(`site.json 에 ${key} 항목이 없습니다.`);
 }
+// 사용방법(guide)은 선택 항목이다. 없으면 화면 메뉴에서 빠진다. (src/components/SiteHeader.jsx)
+if (!site.guide) info.push("사용방법(guide) 없음 - ‘사용방법’ 메뉴를 보여주지 않습니다.");
 (site.ideas ?? []).forEach((idea, index) => {
   const unknown = (idea.datasetNos ?? []).filter((no) => !seen.has(no));
   if (unknown.length) errors.push(`아이디어 ${index + 1}(${idea.field}): 목록에 없는 데이터 번호 ${unknown.join(", ")}`);
