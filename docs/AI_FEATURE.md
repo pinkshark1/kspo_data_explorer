@@ -3,6 +3,8 @@
 “체육시설 안전과 연계할 수 있는 데이터가 뭐 있어?” 처럼 **문장으로 물으면 관련 공개 데이터를 이유와 함께 골라 주는** 기능입니다. 화면의 ‘질문 검색’ 메뉴이며, 검색 방식은 **기본 검색**과 **AI 추천 (Gemini · 이용자 본인 키)** 두 가지입니다. (기관 AI 서버 방식도 규격과 참조 구현이 있으나 서버가 없어 꺼 둔 상태입니다.) 어떤 방식을 켤지는 `data/site.json` 의 `ai` 설정으로 정합니다.
 
 > **Claude·GPT 는 화면에서 뺐습니다 (2026-10-02 담당자 결정).** Claude 는 유료라 일반 이용자가 쓸 수 없고, GPT 는 시험 중 ‘요청이 너무 많거나 사용 한도에 도달했습니다’ 가 나왔습니다. Gemini 는 실제 키로 응답을 확인했습니다. 브라우저에서 Claude·GPT 를 직접 부르던 코드는 지웠고, 이전 구현은 git 이력(커밋 `e5a578f`)에 있습니다.
+>
+> 대신 **같은 Gemini 키로 모델을 고를 수 있게** 했습니다: `Gemini 3.5 Flash-Lite`(기본)와 오픈 모델 `Gemma 4 31B`. 모델이 한 종류에 묶이지 않는 구조를 보여 주기 위한 것이며, 두 모델 모두 2026-10-02 담당자가 실제 키로 동작을 확인했습니다. (아래 ‘모델 선택’)
 
 ## 동작 방식
 
@@ -25,18 +27,18 @@
 | | 기본 검색 | AI 추천 (Gemini · 내 키) | AI 추천 (기관 AI 서버) |
 |---|---|---|---|
 | 현재 상태 | **켜져 있음** (기본값) | **켜져 있음** | 꺼짐 (`ai.gateway.url` 이 비어 있음) |
-| AI 사용 | 없음 (규칙 기반 의미 확장 검색) | Google Gemini (현재 `gemini-3.5-flash-lite`) | 서버가 정한 모델 (참조 구현은 Claude) |
+| AI 사용 | 없음 (규칙 기반 의미 확장 검색) | Google Gemini (기본 `gemini-3.5-flash-lite`) 또는 Gemma 4 (`gemma-4-31b-it`) - 화면에서 고름 | 서버가 정한 모델 (참조 구현은 Claude) |
 | 필요한 것 | 없음 | 이용자가 본인의 Gemini API 키 입력 | 기관이 운영하는 중계 서버 |
 | 데이터가 나가는 곳 | **없음** (외부 요청 0건) | 이 브라우저 → Google | 이 브라우저 → 기관 서버 → AI 서비스 |
 | 키 위치 | - | 이 화면의 메모리에만 (저장 안 함) | 서버 환경변수 (브라우저에 없음) |
 | 알맞은 곳 | 대국민 공개 화면 기본값 | 시연·내부 사용·개발 확인 | 대국민/내부 서비스에 AI 를 켤 때 |
-| 모델 교체 | - | `site.json` 의 `ai.gemini.model` | 서버만 바꾸면 됨 (화면 변경 없음) |
+| 모델 교체 | - | 화면의 ‘모델’ 선택, 또는 `site.json` 의 `ai.gemini.models` | 서버만 바꾸면 됨 (화면 변경 없음) |
 
 > 일반 이용자에게 키 없이 AI 를 쓰게 하려면 **기관 AI 서버 방식**이 맞습니다. ‘내 키’ 방식은 이용자마다 키를 넣어야 해서 일반 이용자용이 아닙니다. 지금은 서버를 마련할 수 없어 기본 검색 + Gemini(내 키)만 켭니다.
 
 ## 설정 — `data/site.json` 의 `ai`
 
-현재 배포 설정은 **기본 검색 + Gemini(이용자 본인 키)** 이고 모델은 **`gemini-3.5-flash-lite`** 입니다. (2026-10-02 담당자가 실제 키로 동작을 확인했습니다.)
+현재 배포 설정은 **기본 검색 + Gemini API 키(이용자 본인 키)** 이고, 기본 모델은 **`gemini-3.5-flash-lite`**, 선택 모델로 **`gemma-4-31b-it`** 이 있습니다. (`gemini-3.5-flash-lite` 는 2026-10-02 담당자가 실제 키로 동작을 확인했습니다.)
 
 ```jsonc
 "ai": {
@@ -44,7 +46,14 @@
   "navLabel": "질문 검색",
   "modes": ["local", "gemini"],     // 켤 방식: local | gemini | gateway  (local 은 항상 포함)
   "defaultMode": "local",
-  "gemini":  { "model": "gemini-3.5-flash-lite", "maxTokens": 16000, "keyGuideUrl": "https://aistudio.google.com/apikey" },
+  "gemini":  {
+    "model": "gemini-3.5-flash-lite",           // 기본 모델 (models 안에 있어야 함)
+    "models": [                                  // 화면의 ‘모델’ 선택 목록. 하나뿐이면 선택 칸이 나오지 않음
+      { "model": "gemini-3.5-flash-lite", "label": "Gemini 3.5 Flash-Lite" },
+      { "model": "gemma-4-31b-it", "label": "Gemma 4 31B (오픈 모델)", "jsonMode": false }   // jsonMode:false = JSON 형식 지정을 받지 않는 모델
+    ],
+    "maxTokens": 16000,
+    "keyGuideUrl": "https://aistudio.google.com/apikey" },
   "gateway": { "url": "", "label": "기관 AI 서버" },   // url 이 비어 있으면 gateway 는 나타나지 않음
   "exampleQuestions": [ "..." ],    // 화면의 예시 질문 (모두 결과가 나오는지 npm run check:search 가 확인)
   "notice": "추천 결과는 참고용입니다. ..."
@@ -57,11 +66,48 @@
 |---|---|
 | 호출 | `POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent` (SDK 없이 `fetch`) |
 | 키 전달 | `x-goog-api-key` 헤더 (주소에 넣지 않음) |
-| 응답 형식 | `responseMimeType: application/json` + `responseJsonSchema` |
-| 옵션 거절(400) 시 | 스키마를 빼고 지시문으로 JSON 형식을 요구해 한 번 더 시도 (화면 오류 없이 결과를 받기 위한 안전장치) |
+| 응답 형식 | 1단계 `responseMimeType: application/json` + `responseJsonSchema` |
+| 옵션 거절(400) 시 | 요구 수준을 단계적으로 낮춰 다시 시도: ② JSON 형식 지정 + 형식 지시문 → ③ 형식 지시문만 (화면 오류 없이 결과를 받기 위한 안전장치). `jsonMode: false` 인 모델은 처음부터 ③ |
 | 기타 | `maxOutputTokens` 에 `maxTokens`, 생각 과정(`thought`) 조각은 답에서 뺌 |
 | 거절·중단 | `promptFeedback.blockReason`·`SAFETY` 등 → ‘답하지 못했습니다’, `MAX_TOKENS` → ‘도중에 끊겼습니다’ |
 | 한도·권한 | 429 → ‘요청이 너무 많거나 사용 한도에 도달했습니다’, 403 → 키 확인 안내, 404 → ‘설정된 모델을 찾지 못했습니다’ |
+
+**모델 선택** (`ai.gemini.models`, 화면의 ‘모델’ 칸)
+
+| 모델 | 설명 | 상태 |
+|---|---|---|
+| `gemini-3.5-flash-lite` (기본) | Gemini 계열의 가볍고 빠른 모델. JSON 스키마 응답 사용 | **2026-10-02 담당자가 실제 키로 동작 확인** |
+| `gemma-4-31b-it` | Gemma 계열의 오픈 모델(행정안전부 AI 공통기반이 지원하는 모델 계열). **같은 Gemini API 키**로 같은 주소에서 부르며, 공식 문서 기준 시스템 지시문은 지원하고 JSON 모드는 명시가 없어 형식 지시문만 쓴다 | **2026-10-02 담당자가 실제 키로 동작 확인** (요청 형식은 공식 문서와 모의 서버로도 점검). 가격표에는 무료(유료 없음)로 나옵니다 |
+
+- 모델을 고르는 값은 화면에서 오지만 **설정에 있는 모델만** 쓰입니다. (`configFor`, `check:ai` 가 확인)
+- Gemma 가 JSON 형식을 지키지 않으면 ‘AI 응답 형식이 올바르지 않습니다’ 안내와 함께 기본 검색 결과가 나옵니다. 그 경우 `jsonMode` 설정이나 형식 지시문(`src/ai/prompt.js` 의 `FORMAT_HINT`)을 손보거나, `ai.gemini.models` 에서 해당 모델을 빼면 됩니다.
+- 다른 모델을 더하려면 `models` 에 `{ "model": "...", "label": "..." }` 를 추가하면 됩니다. (같은 Gemini API 로 부를 수 있는 모델만. 다른 서비스는 `src/ai/providers/` 에 같은 형태의 파일을 추가)
+
+**실제 키로 모델 점검** — `npm run probe:ai [모델 ...]` (`scripts/probe-ai-models.mjs`)
+
+화면 없이, 화면과 같은 코드로 `ai.gemini.models` 의 모델을 차례로 불러 ① 호출이 되는지(키·모델·한도) ② 응답이 형식에 맞아 읽히는지, 요청이 몇 번 어떤 상태로 갔는지(단계별 재시도)를 모델별로 출력합니다. 키는 환경변수 `GEMINI_API_KEY` 로만 받고 출력하지 않습니다.
+
+```powershell
+$k = Read-Host "Gemini API 키" -AsSecureString
+$env:GEMINI_API_KEY = [Net.NetworkCredential]::new('', $k).Password
+npm run probe:ai                    # 설정의 모든 모델
+npm run probe:ai gemma-4-31b-it     # 한 모델만
+Remove-Item Env:GEMINI_API_KEY
+```
+
+**다른 모델 계열을 쓰려면 (검토 결과, 2026-10-02 조회)** — 행정안전부 AI 공통기반이 지원한다고 안내된 모델 중, 이용자가 **브라우저에서 본인 키로** 바로 부를 수 있는지(서버 없이)를 확인했습니다. 구현은 하지 않았고, 필요해지면 ‘OpenAI 호환 서비스’용 호출 파일을 `src/ai/providers/` 에 추가하는 방식으로 붙입니다.
+
+| 모델 | 부를 수 있는 서비스(예) | 브라우저 직접 호출(CORS) | 비용 |
+|---|---|---|---|
+| Gemma | 같은 Gemini API 키(이미 연결), OpenRouter(`google/gemma-4-31b-it:free`) | 가능 | 무료 |
+| GPT-OSS | Groq(`openai/gpt-oss-120b`·`-20b`), OpenRouter | 가능 | Groq 무료 한도(분당 30회·하루 1,000회, 카드 불필요), OpenRouter 유료 |
+| Llama | Groq(`llama-3.3-70b-versatile`), OpenRouter(`meta-llama/llama-3.3-70b-instruct`·`llama-4-*`) | 가능 | Groq 무료 한도, OpenRouter 유료 |
+| 솔라(Solar) | Upstage 콘솔 API(`api.upstage.ai`), OpenRouter(`upstage/solar-pro-3`) | 가능 | Upstage 가입 시 체험 크레딧(10달러·3개월), 이후 유료 |
+| 엑사원(EXAONE) | FriendliAI(OpenAI 호환) | **막힘**(사전 요청 400, 허용 헤더 없음) → 서버 중계 필요 | 유료(EXAONE-4.0.1-32B 입력 0.6달러/출력 1달러, 100만 토큰당) |
+| 하이퍼클로바X | 네이버 CLOVA Studio | **막힘**(403, 허용 헤더 없음) → 서버 중계 필요 | 유료·NCP 계정 필요 |
+
+- 위 표의 ‘가능’은 각 서비스 주소에 이 사이트 출처로 사전 요청(OPTIONS)을 보내 `Access-Control-Allow-Origin` 을 확인한 결과이며, 실제 키로 호출해 응답을 받아 본 것은 아닙니다. 서비스·무료 한도·모델 목록은 자주 바뀝니다.
+- 엑사원·하이퍼클로바X 는 브라우저에서 직접 부를 수 없어, 쓰려면 기관 AI 서버(`gateway`)처럼 서버가 대신 호출해 주어야 합니다.
 
 - Gemini 는 잘못된 API 키에도 401 이 아니라 400(`API_KEY_INVALID`)을 돌려주므로, 이 경우 ‘키를 확인해 주세요’ 안내를 하고 다시 시도하지 않습니다.
 - 모델이 없다는 안내가 나오면 `site.json` 의 `ai.gemini.model` 을 고치세요. 호출이 실패해도 기본 검색 결과가 대신 나오므로 화면이 막히지는 않습니다.
@@ -133,10 +179,10 @@ OpenAI 가 2026-09-29 개발자 행사에서 ‘Sign in with ChatGPT’ 를 확�
 | 명령 | 내용 |
 |---|---|
 | `npm run check:search` | 기본 검색: 질문 30개(기대 데이터가 상위 5건에 있는지), 관계없는 질문 8개(자신 있게 추천하지 않는지), 예시 질문이 모두 결과를 내는지. 현재 적중률 100%, 재현율 97% |
-| `npm run check:ai` | 모의 서버로 AI 경로 62개 점검: 중계 서버(요청 형식·허용 주소·입력 검사·호출/하루/동시 처리 한도·폴백·거절·형식 오류·연결 끊김), 화면의 검색 방식 구성(기본 검색·Gemini 뿐), Gemini 직접 호출(주소·키 헤더·본문 형식, 구조화 출력 거절 시 재시도, 오류별 안내, 키 비저장, 취소와 최신 질문 우선, 초점 이동, 상태 유지), 기관 AI 서버 호출(요청 본문·결과·거절) |
+| `npm run check:ai` | 모의 서버로 AI 경로 68개 점검(모델 선택·단계별 요청 형식 포함): 중계 서버(요청 형식·허용 주소·입력 검사·호출/하루/동시 처리 한도·폴백·거절·형식 오류·연결 끊김), 화면의 검색 방식 구성(기본 검색·Gemini 뿐), Gemini 직접 호출(주소·키 헤더·본문 형식, 구조화 출력 거절 시 재시도, 오류별 안내, 키 비저장, 취소와 최신 질문 우선, 초점 이동, 상태 유지), 기관 AI 서버 호출(요청 본문·결과·거절) |
 
 **한계 (솔직하게)**
 - 위 질문 세트와 유의어 사전은 같은 사람이 만들었습니다. 적중률 100% 는 **개발 중 확인용 수치**이지 이용자 전체에 대한 성능이 아닙니다. 실제 이용자 질문을 모아 `scripts/check-search.mjs` 의 `CASES` 에 추가해 가며 보강하세요.
-- **Gemini 는 담당자가 실제 키로 동작을 확인했지만(2026-10-02), 추천 품질과 비용(`usageMetadata`)은 측정하지 못했습니다.** 자동 점검(`check:ai`)은 모의 서버 기준입니다. 기관 AI 서버(Claude 참조 구현)는 실제 키로 시험하지 못했습니다.
+- **`gemini-3.5-flash-lite` 와 `gemma-4-31b-it` 모두 담당자가 실제 키로 동작을 확인했지만(2026-10-02), 모델별 추천 품질과 비용(`usageMetadata`)은 측정하지 못했습니다.** 자동 점검(`check:ai`)은 모의 서버 기준입니다. 기관 AI 서버(Claude 참조 구현)는 실제 키로 시험하지 못했습니다.
 - 기본 검색은 의미를 ‘이해’하는 것이 아니라 낱말·유의어 일치로 찾습니다. 사전에 없는 표현은 놓칠 수 있고(그때 AI 방식이 도움이 됨), 질문과 맞는 데이터가 없으면 “가까운 후보”라고 알립니다. 카탈로그에 없는 합성어(예: ‘채용공고’)는 결과 순서는 맞아도 ‘가까운 후보’ 안내가 보수적으로 나올 수 있습니다.
 - 새 데이터가 추가되면 이름·분야 낱말이 사전에 없을 수 있으니 `src/ai/thesaurus.js` 를 함께 확인하세요.

@@ -14,6 +14,7 @@
     "fetch:meta": "node scripts/fetch-portal-metadata.mjs",
     "check:search": "node scripts/check-search.mjs",
     "check:ai": "node scripts/check-ai.mjs",
+    "probe:ai": "node scripts/probe-ai-models.mjs",
     "ai-gateway": "node scripts/ai-gateway.mjs"
   },
   "dependencies": {

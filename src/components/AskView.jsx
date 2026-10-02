@@ -10,13 +10,20 @@ const KEY_MODES = {
   gemini: { name: "Gemini", target: "Google(Gemini)", host: "Google", keyLabel: "Gemini API 키", placeholder: "AIza..." },
 };
 
+// 방식 설정에서 고를 수 있는 모델 목록. ai.<방식>.models 가 없으면 기본 모델 하나뿐이다.
+function modelsOf(config) {
+  return config.models?.length ? config.models : [{ model: config.model, label: config.model }];
+}
+
 // 설정(site.json ai.modes)에서 켜진 방식만 보여준다. 기본 검색은 항상 있다.
 function availableModes(ai) {
   const wanted = ai.modes ?? ["local"];
   const modes = [{ id: "local", label: "기본 검색", hint: "AI를 쓰지 않고 이 브라우저 안에서만 찾습니다." }];
   for (const [id, info] of Object.entries(KEY_MODES)) {
     if (wanted.includes(id) && ai[id]) {
-      modes.push({ id, label: `AI 추천 (${info.name})`, hint: `내 ${info.keyLabel}로 ${ai[id].model} 모델에 물어봅니다.` });
+      const list = modelsOf(ai[id]);
+      const hint = list.length > 1 ? `내 ${info.keyLabel}로 ${list.map((entry) => entry.label).join(" · ")} 중 골라 물어봅니다.` : `내 ${info.keyLabel}로 ${list[0].model} 모델에 물어봅니다.`;
+      modes.push({ id, label: `AI 추천 (${info.name})`, hint });
     }
   }
   if (wanted.includes("gateway") && ai.gateway?.url) {
@@ -75,6 +82,10 @@ export default function AskView({ store, saved, onSave, onOpenDataset }) {
   const [keys, setKeys] = useState({});
   const keyMode = KEY_MODES[mode]; // 키를 입력해야 하는 방식이면 그 정보, 아니면 undefined
   const apiKey = keys[mode] ?? "";
+  // 방식별로 고른 모델. 고르지 않았으면 설정의 기본 모델. 키와 달리 비밀이 아니므로 화면에 있는 동안만 기억한다.
+  const [pickedModels, setPickedModels] = useState({});
+  const modelList = keyMode ? modelsOf(ai[mode]) : [];
+  const model = pickedModels[mode] && modelList.some((entry) => entry.model === pickedModels[mode]) ? pickedModels[mode] : ai[mode]?.model;
   const [status, setStatus] = useState(saved?.result ? "done" : "idle"); // idle | loading | done
   const [result, setResult] = useState(saved?.result ?? null);
   const [formError, setFormError] = useState("");
@@ -110,7 +121,7 @@ export default function AskView({ store, saved, onSave, onOpenDataset }) {
     setStatus("loading");
     setLiveMessage("질문을 분석하고 있습니다.");
     try {
-      const next = await recommend({ question: trimmed, mode, store, index, apiKey: apiKey.trim(), signal: controller.signal });
+      const next = await recommend({ question: trimmed, mode, store, index, apiKey: apiKey.trim(), model, signal: controller.signal });
       if (abortRef.current !== controller) return; // 그 사이 새 질문을 보냈거나 취소했다면 이 결과는 버린다
       setResult(next);
       setStatus("done");
@@ -196,6 +207,20 @@ export default function AskView({ store, saved, onSave, onOpenDataset }) {
                 </>
               )}
             </p>
+          </div>
+        )}
+
+        {keyMode && modelList.length > 1 && (
+          <div className="ask-model">
+            <label htmlFor="ask-model">모델</label>
+            <select id="ask-model" value={model} onChange={(event) => setPickedModels((current) => ({ ...current, [mode]: event.target.value }))}>
+              {modelList.map((entry) => (
+                <option key={entry.model} value={entry.model}>
+                  {entry.label}
+                </option>
+              ))}
+            </select>
+            <p>같은 키로 모델을 바꿔 쓸 수 있습니다. 어느 모델이든 결과 화면과 형식은 같습니다.</p>
           </div>
         )}
 

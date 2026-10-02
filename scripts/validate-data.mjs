@@ -152,6 +152,14 @@ if (site.ai?.enabled) {
   const modes = ai.modes ?? [];
   for (const mode of modes) if (!["local", "gemini", "gateway"].includes(mode)) errors.push(`site.json ai.modes 에 알 수 없는 방식이 있습니다: ${mode}`);
   if (modes.includes("gemini") && !(ai.gemini?.model && ai.gemini?.maxTokens)) errors.push("site.json ai.gemini 에 model, maxTokens 가 필요합니다.");
+  if (ai.gemini?.models) {
+    const list = ai.gemini.models;
+    if (!Array.isArray(list) || !list.length || list.some((entry) => !entry?.model || !entry?.label)) errors.push("site.json ai.gemini.models 는 model 과 label 이 있는 항목의 목록이어야 합니다.");
+    else {
+      if (new Set(list.map((entry) => entry.model)).size !== list.length) errors.push("site.json ai.gemini.models 에 같은 model 이 두 번 있습니다.");
+      if (!list.some((entry) => entry.model === ai.gemini.model)) errors.push(`site.json ai.gemini.model(${ai.gemini.model}) 이 ai.gemini.models 에 없습니다.`);
+    }
+  }
   if (modes.includes("gateway")) {
     if (!/^https:\/\//.test(ai.gateway?.url ?? "") && !/^http:\/\/(localhost|127\.0\.0\.1)/.test(ai.gateway?.url ?? "")) {
       errors.push("site.json ai.gateway.url 은 https:// 주소여야 합니다(개발용 localhost 제외).");

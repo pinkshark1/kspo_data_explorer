@@ -34,19 +34,22 @@ export function readGeminiText(data) {
 /**
  * @param {object} options
  * @param {string} options.apiKey  이용자가 입력한 키 (메모리에서만 사용)
- * @param {object} options.config  site.json 의 ai.gemini (model, maxTokens)
+ * @param {object} options.config  site.json 의 ai.gemini 에서 고른 모델 하나 (model, maxTokens, jsonMode)
+ *                                 jsonMode === false 이면 JSON 형식 지정을 받지 않는 모델(예: Gemma)로 보고 처음부터 지시문만 쓴다.
  */
 export async function askGemini({ apiKey, config, system, userMessage, signal }) {
-  const buildRequest = (structured) => ({
-    systemInstruction: { parts: [{ text: structured ? system : `${system}\n\n${FORMAT_HINT}` }] },
+  // 응답 형식을 요구하는 방법. 모델이 받지 않아 400 이 오면 다음 단계로 낮춰 다시 시도한다. (응답 해석은 parseAiResponse 가 글 속의 JSON 을 찾아낸다)
+  //   0) JSON 스키마  1) JSON 형식 지정 + 형식 지시문  2) 형식 지시문만 (JSON 모드를 받지 않는 모델용)
+  const levels = config.jsonMode === false ? [2] : [0, 1, 2];
+  const buildRequest = (level) => ({
+    systemInstruction: { parts: [{ text: level === 0 ? system : `${system}\n\n${FORMAT_HINT}` }] },
     contents: [{ role: "user", parts: [{ text: userMessage }] }],
-    // JSON 으로 답하게 하되, 스키마를 받지 않는 모델이면 형식 지시문으로 대신한다. (응답 해석은 parseAiResponse 가 글 속의 JSON 을 찾아낸다)
-    generationConfig: { responseMimeType: "application/json", maxOutputTokens: config.maxTokens, ...(structured ? { responseJsonSchema: AI_SCHEMA } : {}) },
+    generationConfig: { maxOutputTokens: config.maxTokens, ...(level <= 1 ? { responseMimeType: "application/json" } : {}), ...(level === 0 ? { responseJsonSchema: AI_SCHEMA } : {}) },
   });
 
   let last;
-  for (const structured of [true, false]) {
-    last = await postJson({ url: endpointOf(config.model), headers: { "x-goog-api-key": apiKey }, body: buildRequest(structured), signal, service: SERVICE });
+  for (const level of levels) {
+    last = await postJson({ url: endpointOf(config.model), headers: { "x-goog-api-key": apiKey }, body: buildRequest(level), signal, service: SERVICE });
     if (last.status !== 400) break;
     if (isInvalidKey(last.data)) throw httpError(401, { service: SERVICE, model: config.model });
   }

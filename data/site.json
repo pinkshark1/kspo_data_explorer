@@ -66,6 +66,17 @@
     "defaultMode": "local",
     "gemini": {
       "model": "gemini-3.5-flash-lite",
+      "models": [
+        {
+          "model": "gemini-3.5-flash-lite",
+          "label": "Gemini 3.5 Flash-Lite"
+        },
+        {
+          "model": "gemma-4-31b-it",
+          "label": "Gemma 4 31B (오픈 모델)",
+          "jsonMode": false
+        }
+      ],
       "maxTokens": 16000,
       "keyGuideUrl": "https://aistudio.google.com/apikey"
     },

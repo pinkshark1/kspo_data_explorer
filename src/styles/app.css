@@ -2852,6 +2852,34 @@ select:focus-visible {
 .ask-key a span {
   color: var(--muted);
 }
+.ask-model {
+  gap: 6px;
+  display: grid;
+}
+.ask-model label {
+  color: var(--krds-gray-70);
+  font-size: 12px;
+  font-weight: 700;
+}
+.ask-model select {
+  border: 1px solid var(--krds-gray-40);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  font-size: 14px;
+}
+.ask-model select:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.ask-model p {
+  color: var(--muted);
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
 .ask-input {
   gap: 10px;
   display: flex;

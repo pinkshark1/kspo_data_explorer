@@ -385,6 +385,41 @@ async function checkBrowser() {
       await context.close();
     }
 
+    // --- 모델 선택: 같은 키로 다른 모델(Gemma 등)을 고르면 그 모델로 호출한다
+    {
+      const { configFor } = await import("../src/ai/recommend.js");
+      const other = GEMINI.config.models.find((entry) => entry.model !== GEMINI.config.model);
+      check("[모델 선택] 설정에 모델이 2종 이상 있고, 화면에서 온 값은 설정에 있는 모델만 허용한다", GEMINI.config.models.length >= 2 && configFor(GEMINI.config, other.model).model === other.model && configFor(GEMINI.config, "임의의-모델").model === GEMINI.config.model && configFor(GEMINI.config, undefined).model === GEMINI.config.model);
+
+      const { context, page } = await openAsk(browser, base);
+      const calls = [];
+      await mockGemini(page, calls, () => ({ status: 200, answer: (b) => `결과입니다: ${JSON.stringify(goodAnswer(b))}` }));
+      await page.getByLabel(GEMINI.mode, { exact: false }).check();
+      const options = await page.locator("#ask-model option").allInnerTexts();
+      check("[브라우저] Gemini 를 고르면 ‘모델’ 선택이 나오고 설정의 모델 목록과 같으며 기본 모델이 먼저 골라져 있다", options.join("|") === GEMINI.config.models.map((entry) => entry.label).join("|") && (await page.inputValue("#ask-model")) === GEMINI.config.model, options.join(" / "));
+      await page.selectOption("#ask-model", other.model);
+      await page.fill("#ask-api-key", GEMINI.key);
+      await page.fill("#ask-question", "체육시설 안전과 연계할 수 있는 데이터가 뭐 있어?");
+      await page.getByRole("button", { name: /질문하기/ }).click();
+      await page.waitForSelector(".ask-badge");
+      const call = calls[0];
+      check("[브라우저] 다른 모델을 고르면 그 모델 주소로, 같은 키로 호출한다", call.url === `${GEMINI.origin}/v1beta/models/${other.model}:generateContent` && call.headers["x-goog-api-key"] === GEMINI.key, other.model);
+      check("[브라우저] JSON 모드를 받지 않는 모델(jsonMode:false)은 JSON 형식 지정 없이 형식 지시문만 보내 한 번에 성공한다", other.jsonMode === false && calls.length === 1 && call.body.generationConfig.responseMimeType === undefined && call.body.generationConfig.responseJsonSchema === undefined && call.body.systemInstruction.parts[0].text.includes("JSON"), `요청 ${calls.length}회`);
+      check("[브라우저] 다른 모델의 답(글 속 JSON)도 같은 결과 화면(추천 2건)으로 표시한다", (await page.locator(".ask-list").first().locator(".ask-item").count()) === 2);
+      await context.close();
+    }
+
+    // --- JSON 형식 지정을 받지 않는 모델이면 요구 수준을 단계적으로 낮춘다 (스키마 → JSON 형식 지정 → 지시문만)
+    {
+      const { context, page } = await openAsk(browser, base);
+      const calls = [];
+      await mockGemini(page, calls, (request, body) => (body.generationConfig?.responseMimeType ? { status: 400, error: { error: { message: "JSON mode is not enabled for this model" } } } : { status: 200, answer: (b) => `\`\`\`json\n${JSON.stringify(goodAnswer(b))}\n\`\`\`` }));
+      await askGeminiMode(page);
+      await page.waitForSelector(".ask-badge");
+      check("[브라우저] 스키마와 JSON 형식 지정을 모두 거절하면 지시문만 보내 다시 시도해 성공한다(코드 블록으로 감싼 답도 읽는다)", calls.length === 3 && !calls.at(-1).body.generationConfig.responseMimeType && calls.at(-1).body.systemInstruction.parts[0].text.includes("JSON"), `요청 ${calls.length}회`);
+      await context.close();
+    }
+
     // --- 오류별 안내 + 기본 검색 결과로 대체
     for (const [caseLabel, plan, expected] of GEMINI.errors) {
       const { context, page } = await openAsk(browser, base);

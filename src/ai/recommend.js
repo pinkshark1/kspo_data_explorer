@@ -10,6 +10,13 @@ import { search } from "./retrieval.js";
 // 이용자 본인의 API 키로 브라우저에서 직접 부르는 방식. 설정은 site.json 의 ai.<방식> 에 있다.
 const KEY_PROVIDERS = { gemini: askGemini };
 
+// 방식 설정(ai.gemini 등)에서 이용자가 고른 모델의 설정을 뽑는다. 화면에서 온 값을 그대로 쓰지 않고 설정에 있는 모델만 허용한다.
+export function configFor(config, model) {
+  const { models = [], ...base } = config;
+  const picked = models.find((entry) => entry.model === model) ?? models.find((entry) => entry.model === base.model);
+  return { ...base, ...(picked ?? {}) };
+}
+
 const CANDIDATE_LIMIT = 30; // 검색이 잘 될 때 LLM 에 보내는 후보 수
 const FULL_CATALOG_COMPACT_FROM = 60; // 후보가 이보다 많으면 이름·분야만 보내 토큰을 아낀다
 
@@ -40,9 +47,10 @@ export function selectCandidates(index, store, question) {
  * @param {object} args.store   loadAppData() 결과
  * @param {object} args.index   buildIndex() 결과
  * @param {string} [args.apiKey] gemini 모드에서 이용자가 입력한 키
+ * @param {string} [args.model]  gemini 모드에서 이용자가 고른 모델. site.json 의 ai.gemini.models 에 있는 것만 쓰고, 없으면 기본 모델을 쓴다.
  * @param {AbortSignal} [args.signal]
  */
-export async function recommend({ question, mode, store, index, apiKey, signal }) {
+export async function recommend({ question, mode, store, index, apiKey, model, signal }) {
   const trimmed = question.trim().slice(0, LIMITS.questionChars);
   const aiConfig = store.site.ai ?? {};
   const found = search(index, trimmed, { limit: 12 });
@@ -78,7 +86,7 @@ export async function recommend({ question, mode, store, index, apiKey, signal }
     let text;
     if (Object.hasOwn(KEY_PROVIDERS, mode) && aiConfig[mode]) {
       const system = buildSystemPrompt({ orgName: store.site.organization.name, serviceName: store.site.service.fullName });
-      text = await KEY_PROVIDERS[mode]({ apiKey, config: aiConfig[mode], system, userMessage: buildUserMessage(trimmed, candidates), signal });
+      text = await KEY_PROVIDERS[mode]({ apiKey, config: configFor(aiConfig[mode], model), system, userMessage: buildUserMessage(trimmed, candidates), signal });
     } else if (mode === "gateway") {
       text = await askGateway({ url: aiConfig.gateway.url, question: trimmed, candidates, signal });
     } else {
