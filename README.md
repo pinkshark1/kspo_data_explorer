@@ -233,7 +233,7 @@ npm start                     # http://localhost:4173 (종료: Ctrl+C)
 | 질문 검색 품질 (`check:search`) | AI 없음 (기본 검색) · 질문 39개 | 2026-10-02 | 상위 5건 적중률 100% · 상위 10건 재현율 97% | 같은 파일 |
 | AI 경로 (`check:ai`) | 모의 서버 (실제 호출 없음) | 2026-10-02 | 71/71 통과 | 같은 파일 |
 | 기본 검색 · AI 실패 전환 비교 (`compare:ai`) | 예시 질문 5개 · 모의 오류(한도 초과·잘못된 키) | 2026-10-02 | 실패 시 두 경우 모두 기본 검색 8건으로 전환 | [docs/evidence](docs/evidence/) `*-ai-compare.md` |
-| AI 추천 실제 호출 (`probe:ai`·`compare:ai`) | Google Gemini API · `gemini-3.5-flash-lite`, `gemma-4-31b-it` | 2026-10-02 | 모델 점검: 두 모델 모두 응답(Gemma는 503 뒤 재시도로 응답). 예시 질문 5개 비교: Flash-Lite 5/5 응답, Gemma 2/5 응답(3건은 Google 쪽 500 오류·무료 사용 한도 429로 실패해 기본 검색으로 전환) | [ai-probe](docs/evidence/2026-10-02-ai-probe.txt) · [ai-compare](docs/evidence/2026-10-02-ai-compare.md) |
+| AI 추천 실제 호출 (`probe:ai`·`compare:ai`) | Google Gemini API · `gemini-3.5-flash-lite`, `gemma-4-31b-it` | 2026-10-06 | 예시 질문 5개 비교: Flash-Lite 5/5 응답(평균 3.5초), Gemma 4/5 응답(평균 78.7초, 1건은 Google 쪽 500·503·시간 초과로 실패해 기본 검색으로 전환). 추천 이유 51개 모두에 그 데이터의 설명·컬럼과 같은 낱말이 있음(낱말 대조이며 품질 평가는 아님). 모델 점검(10-02): 두 모델 모두 응답 | [ai-compare](docs/evidence/2026-10-06-ai-compare.md) · [ai-probe](docs/evidence/2026-10-02-ai-probe.txt) |
 | 다른 기관 데이터 이식 | 대한체육회 공공데이터포털 개방 데이터 23건 | 2026-10-02 | 기관별 화면 코드 수정 없이(처음 이식할 때 KSPO 고정 문구를 설정값으로 정리) 데이터 점검 오류 0건 · 화면 점검 14/14 | [examples/korea-sports-council](examples/korea-sports-council/README.md) |
 | 행정안전부 AI 공통기반 구동 | - | - | 하지 않음 (공통기반 접속 환경 없음) | - |
 | 소규모 사전 사용성 점검 | 직원 3~5명 · 과제 3개 × 2방식 | - | 측정 전 | [docs/EFFECT_MEASUREMENT.md](docs/EFFECT_MEASUREMENT.md) |
