@@ -40,15 +40,23 @@ const rows = lines.map((line, index) => {
 });
 if (!rows.length) fail("기록이 비어 있습니다. 점검 결과를 적은 뒤 다시 실행하세요.");
 
-// 한 참여자 안에서: 같은 과제를 두 번 하지 않았는지, 한 묶음은 한 방식으로만 했는지
-const byParticipant = Map.groupBy(rows, (row) => row.participant);
+// 한 참여자 안에서: 같은 과제를 두 번 하지 않았는지, 한 묶음은 한 방식으로만, 두 묶음은 서로 다른 방식으로 했는지
+// (Map.groupBy 는 Node.js 21 부터라 Node.js 20 에서도 되도록 직접 묶는다)
+const byParticipant = new Map();
+for (const row of rows) {
+  if (!byParticipant.has(row.participant)) byParticipant.set(row.participant, []);
+  byParticipant.get(row.participant).push(row);
+}
 for (const [participant, list] of byParticipant) {
   const tasks = list.map((row) => row.task);
   if (new Set(tasks).size !== tasks.length) problems.push(`${participant}: 같은 과제가 두 번 기록되었습니다.`);
+  const methodOf = {};
   for (const set of ["A", "B"]) {
     const methods = new Set(list.filter((row) => row.task.startsWith(set)).map((row) => row.method));
     if (methods.size > 1) problems.push(`${participant}: 과제 ${set} 묶음을 두 방식으로 나눠 했습니다 (묶음 하나는 한 방식으로만).`);
+    methodOf[set] = [...methods][0];
   }
+  if (methodOf.A && methodOf.A === methodOf.B) problems.push(`${participant}: 과제 A·B 묶음을 같은 방식(${methodOf.A})으로 했습니다 (두 묶음은 서로 다른 방식이어야 함).`);
   if (list.length !== 6) problems.push(`${participant}: 과제가 ${list.length}건입니다 (두 방식 × 3과제 = 6건이어야 함).`);
 }
 if (problems.length) fail(`기록을 확인해 주세요.\n- ${problems.join("\n- ")}`);

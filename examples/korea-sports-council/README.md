@@ -78,7 +78,8 @@ KSPO 데이터 지도를 **다른 기관의 공개데이터로 옮겨도 그대�
 ## 실행·갱신 절차
 
 ```bash
-npm install && npm run build                       # 처음 한 번
+npm install                                        # 처음 한 번
+npm run build
 node examples/korea-sports-council/update.mjs      # 수집 → 포털 정보 → 데이터 점검 → 화면 점검 (단계별 시간 출력)
 npm start -- --data examples/korea-sports-council/data   # http://localhost:4173 에서 화면 보기
 ```

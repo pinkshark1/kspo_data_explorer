@@ -61,10 +61,12 @@ function parseItems(html) {
 const found = new Map();
 for (const dType of ["FILE", "API"]) {
   for (let page = 1; page <= 10; page += 1) {
-    const items = parseItems(await fetchList(dType, page)).filter((item) => item.kind === dType && item.provider === ORG);
+    // 마지막 쪽 판단은 거르기 전 건수로 한다 (다른 기관·유형이 섞인 쪽에서 일찍 멈추지 않게)
+    const listed = parseItems(await fetchList(dType, page));
+    const items = listed.filter((item) => item.kind === dType && item.provider === ORG);
     const fresh = items.filter((item) => !found.has(item.id));
     fresh.forEach((item) => found.set(item.id, item));
-    if (fresh.length === 0 || items.length < 40) break;
+    if (listed.length < 40 || (items.length && !fresh.length)) break; // 마지막 쪽이거나 같은 쪽이 되풀이됨
   }
 }
 if (!found.size) throw new Error("데이터를 찾지 못했습니다. 포털 화면 구조가 바뀌었을 수 있습니다.");

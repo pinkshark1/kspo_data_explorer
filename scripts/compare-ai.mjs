@@ -13,10 +13,10 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { TRANSIENT_STATUSES } from "../src/ai/providers/http.js";
 import { recommend } from "../src/ai/recommend.js";
 import { buildIndex, extractTerms, normalize } from "../src/ai/retrieval.js";
 import { PAYLOAD } from "../src/lib/data.js";
+import { failureAdvice, installCallLog, isDailyQuota, retryCause, retryWaitSec, statusOf, statusText } from "./lib/ai-call-log.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const readJson = (file) => JSON.parse(fs.readFileSync(path.join(root, "data", file), "utf8"));
@@ -67,39 +67,11 @@ function checkReason(reason, dataset, question) {
   return { grounded, linked, unknown };
 }
 
-// 실제 호출의 상태 코드와, 걸러지기 전 모델 응답(후보 밖 번호를 몇 건 냈는지 세기 위해)만 기록한다.
-// 오류 응답은 Google 이 붙이는 오류 종류(UNAVAILABLE 등 영문 대문자 코드)만 함께 적는다. 오류 문장은 적지 않는다.
-const realFetch = globalThis.fetch;
-let calls = [];
-globalThis.fetch = async (...args) => {
-  let response;
-  try {
-    response = await realFetch(...args);
-  } catch (error) {
-    calls.push({ status: "연결 실패", network: true, text: "" });
-    throw error;
-  }
-  const entry = { status: response.status, text: "" };
-  calls.push(entry);
-  try {
-    const data = await response.clone().json();
-    if (response.ok) entry.text = (data?.candidates?.[0]?.content?.parts ?? []).filter((part) => !part.thought).map((part) => part.text ?? "").join("");
-    else if (/^[A-Z_]{1,40}$/.test(String(data?.error?.status ?? ""))) entry.reason = data.error.status;
-  } catch {
-    // 응답 해석 실패는 recommend() 가 처리한다
-  }
-  return response;
-};
-const statusOf = (call) => (call.reason ? `${call.status} ${call.reason}` : String(call.status));
-const statusText = (list) => list.map(statusOf).join("→") || "-";
-
-// Google 쪽 일시 오류(5xx)·연결 실패는 화면의 자동 재시도(1회)와 별도로, 기록을 위해 더 기다렸다가 다시 시도한다.
-const RETRY_WAITS_MS = [20_000, 60_000]; // 2·3번째 시도 전에 기다리는 시간
+// 실제 호출의 상태(오류 종류·한도 이름·시간 초과 구분)와, 걸러지기 전 모델 응답(후보 밖 번호를 몇 건 냈는지 세기 위해)만 기록한다.
+// Google 쪽 일시 오류(5xx)·시간 초과·연결 실패, 분당 무료 한도(429)는 화면의 자동 재시도(5xx 1회)와 별도로 기다렸다가 다시 시도한다.
+// 기록·재시도 규칙은 probe:ai 와 같다(scripts/lib/ai-call-log.mjs).
+const callLog = installCallLog();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const lastFailedTransiently = () => {
-  const last = calls.at(-1);
-  return Boolean(last && (last.network || TRANSIENT_STATUSES.has(last.status)));
-};
 const rawNos = (text) => {
   try {
     const data = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
@@ -147,7 +119,7 @@ log(`| 소스 커밋 | ${commit} |`);
 log(`| 데이터 | ${store.datasets.length}건 (목록 기준일 ${explorer.generatedAt}) |`);
 log(`| AI 모델 | ${apiKey ? models.map((entry) => `${entry.label} (\`${entry.model}\`)`).join(", ") : "키가 없어 실호출하지 않음"} |`);
 log(`| 호출 방식 | Google Gemini API \`generateContent\`, 이용자 키(실행자 본인 키, 기록하지 않음) |`);
-log(`| 일시 오류 처리 | 화면과 같이 5xx 가 바로 오면 2초 뒤 한 번 더 보냄. 그래도 5xx·연결 실패면 이 기록용으로 ${RETRY_WAITS_MS.map((ms) => `${ms / 1000}초`).join("·")} 뒤 최대 ${RETRY_WAITS_MS.length}번 더 시도하고, 모든 요청의 상태를 그대로 적음 |`);
+log("| 일시 오류 처리 | 화면과 같이 5xx 가 바로 오면 2초 뒤 한 번 더 보냄(화면의 응답 시간 제한은 90초). 그래도 5xx·시간 초과·연결 실패면 이 기록용으로 20·60·60초 뒤, 분당 무료 한도(429)면 Google 이 알려 준 시간 뒤 최대 3번 더 시도하고, 모든 요청의 상태를 그대로 적음(하루 한도는 다시 시도하지 않음) |");
 log(`| 모의 실패 | 네트워크 없이 Gemini 오류 응답을 흉내 냄: ${FAILURES.map((failure) => failure.label).join(", ")} |`);
 log();
 log("**이유 점검 기준:** AI 추천 이유의 핵심 낱말을 그 데이터의 이름·분야·키워드·출처 시스템·설명 전문·컬럼 전체에서 찾았습니다. 데이터에 있으면 ‘근거’, 질문에만 있으면 ‘질문 연결’, 어디에도 없으면 ‘확인 필요’입니다. ‘확인 필요’는 바꿔 말한 표현일 수 있어 아래 표의 데이터 설명과 함께 사람이 판단합니다.");
@@ -155,6 +127,8 @@ log("**이유 점검 기준:** AI 추천 이유의 핵심 낱말을 그 데이�
 const record = { date: todayKst(), commit, datasets: store.datasets.length, listDate: explorer.generatedAt, models: apiKey ? models.map(({ model, label }) => ({ model, label })) : [], questions: [], failures: [] };
 const totals = { reasons: 0, withGround: 0, terms: 0, grounded: 0, linked: 0, unknown: 0, dropped: 0, calls: 0, failedCalls: 0, retried: 0 };
 const modelTotals = new Map(models.map((entry) => [entry.model, { reasons: 0, withGround: 0, terms: 0, grounded: 0, seconds: [], failed: 0, overlap: [] }]));
+const finalFailures = []; // 끝내 실패한 호출의 마지막 요청 기록 (끝에 무엇을 하면 되는지 알려 주는 용도)
+const dailyExhausted = new Set(); // 하루 한도에 걸린 모델 - 남은 질문에서는 부르지 않는다
 
 for (const [qIndex, question] of questions.entries()) {
   console.log(`[${qIndex + 1}/${questions.length}] ${question}`);
@@ -174,14 +148,27 @@ for (const [qIndex, question] of questions.entries()) {
   record.questions.push(qRecord);
 
   for (const entry of apiKey ? models : []) {
-    // 일시 오류면 기다렸다가 다시 시도한다. seconds 는 마지막 시도에 걸린 시간, allCalls 는 모든 시도의 요청 상태.
+    if (dailyExhausted.has(entry.model)) {
+      const stat = modelTotals.get(entry.model);
+      totals.calls += 1;
+      totals.failedCalls += 1;
+      stat.failed += 1;
+      qRecord.ai.push({ model: entry.model, ok: false, skipped: true, error: "앞 질문에서 하루 무료 한도에 걸려 호출하지 않음", seconds: 0, attempts: 0, calls: [] });
+      log();
+      log(`### ② AI 추천 - ${entry.label} (\`${entry.model}\`)`);
+      log();
+      log("호출하지 않음: 앞 질문에서 이 모델이 하루 무료 한도에 걸렸습니다. 화면은 이때 ① 기본 검색 결과를 그대로 보여 줍니다.");
+      console.log(`    ${entry.model}: 하루 한도로 건너뜀`);
+      continue;
+    }
+    // 일시 오류·분당 한도면 기다렸다가 다시 시도한다. seconds 는 마지막 시도에 걸린 시간, allCalls 는 모든 시도의 요청 상태.
     let result;
     let seconds;
     let attempts = 0;
     const allCalls = [];
     for (;;) {
       attempts += 1;
-      calls = [];
+      callLog.calls = [];
       const started = Date.now();
       try {
         // 화면의 자동 재시도(1회)까지 끝날 수 있게 요청 한 번의 시간 제한(90초)보다 넉넉히 둔다
@@ -190,16 +177,17 @@ for (const [qIndex, question] of questions.entries()) {
         result = { usedAi: false, error: `시간 제한(150초)을 넘겨 멈췄습니다. (${error?.message ?? error})` };
       }
       seconds = (Date.now() - started) / 1000;
-      allCalls.push(...calls);
-      const wait = !result.usedAi && lastFailedTransiently() ? RETRY_WAITS_MS[attempts - 1] : undefined;
+      allCalls.push(...callLog.calls);
+      const last = callLog.calls.at(-1);
+      const wait = result.usedAi ? null : retryWaitSec(last, attempts);
       if (!wait) break;
-      console.log(`    ${entry.model}: Google 쪽 일시 오류(${statusText(calls)}) - ${wait / 1000}초 뒤 다시 시도`);
-      await sleep(wait);
+      console.log(`    ${entry.model}: ${retryCause(last)}(${statusText(callLog.calls)}) - ${wait}초 뒤 다시 시도`);
+      await sleep(wait * 1000);
     }
     const stat = modelTotals.get(entry.model);
     totals.calls += 1;
     if (attempts > 1) totals.retried += 1;
-    const attemptNote = attempts > 1 ? ` · Google 쪽 일시 오류로 ${attempts}번 시도` : "";
+    const attemptNote = attempts > 1 ? ` · 일시 오류·한도로 ${attempts}번 시도` : "";
     log();
     log(`### ② AI 추천 - ${entry.label} (\`${entry.model}\`)`);
     log();
@@ -208,11 +196,13 @@ for (const [qIndex, question] of questions.entries()) {
       stat.failed += 1;
       qRecord.ai.push({ model: entry.model, ok: false, error: result.error, seconds: Number(seconds.toFixed(1)), attempts, calls: allCalls.map(statusOf) });
       log(`호출 실패: ${cell(result.error)} (요청 ${allCalls.length}회, 상태 ${statusText(allCalls)}${attemptNote}, 마지막 시도 ${seconds.toFixed(1)}초). 화면은 이때 ① 기본 검색 결과를 그대로 보여 줍니다.`);
-      console.log(`    ${entry.model}: 실패 - ${result.error}`);
+      console.log(`    ${entry.model}: 실패 - ${result.error} (${statusText(callLog.calls)})`);
+      finalFailures.push(callLog.calls.at(-1));
+      if (isDailyQuota(callLog.calls.at(-1))) dailyExhausted.add(entry.model);
       continue;
     }
     stat.seconds.push(seconds);
-    const returned = calls.length ? rawNos(calls.at(-1).text) : [];
+    const returned = callLog.calls.length ? rawNos(callLog.calls.at(-1).text) : [];
     const kept = new Set(result.recommendations.map((item) => item.dataset.no));
     const dropped = returned.filter((no) => !kept.has(no)).length;
     totals.dropped += dropped;
@@ -307,7 +297,7 @@ if (apiKey) {
     log(`| ${entry.label} | ${questions.length} | ${stat.failed} | ${average} | ${stat.reasons} | ${stat.reasons ? `${stat.withGround}/${stat.reasons} (${Math.round((stat.withGround / stat.reasons) * 100)}%)` : "-"} | ${stat.terms ? `${stat.grounded}/${stat.terms} (${Math.round((stat.grounded / stat.terms) * 100)}%)` : "-"} | ${stat.overlap.join(", ") || "-"} |`);
   }
   log();
-  log(`전체: 이유 ${totals.reasons}개 · 핵심어 ${totals.terms}개 중 근거 ${totals.grounded} · 질문 연결 ${totals.linked} · 확인 필요 ${totals.unknown} · 후보 밖 번호로 제외된 추천 ${totals.dropped}건 · Google 쪽 일시 오류로 다시 시도한 호출 ${totals.retried}건`);
+  log(`전체: 이유 ${totals.reasons}개 · 핵심어 ${totals.terms}개 중 근거 ${totals.grounded} · 질문 연결 ${totals.linked} · 확인 필요 ${totals.unknown} · 후보 밖 번호로 제외된 추천 ${totals.dropped}건 · 일시 오류·분당 한도로 다시 시도한 호출 ${totals.retried}건`);
 } else {
   log("GEMINI_API_KEY 가 없어 AI 실호출은 하지 않았습니다. ① 기본 검색과 ③ 모의 실패만 기록했습니다.");
 }
@@ -319,4 +309,5 @@ record.totals = totals;
 record.byModel = Object.fromEntries([...modelTotals].map(([model, stat]) => [model, { ...stat, seconds: stat.seconds.map((value) => Number(value.toFixed(1))) }]));
 fs.writeFileSync(file.replace(/\.md$/, ".json"), `${JSON.stringify(record, null, 1)}\n`);
 console.log(`\n저장: ${path.relative(root, file)}${apiKey ? "" : "  (키 없음: AI 실호출 생략)"}`);
+if (totals.failedCalls) console.log([`AI 호출 ${totals.calls}건 중 ${totals.failedCalls}건이 실패했습니다.`, ...failureAdvice(finalFailures)].join("\n"));
 process.exit(apiKey && totals.failedCalls ? 1 : 0);

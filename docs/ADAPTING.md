@@ -12,7 +12,7 @@ npm run build
 npm start          # http://localhost:4173 에서 현재 화면 확인
 ```
 
-`data/` 를 덮어쓰기 전에 다른 폴더의 데이터로 먼저 띄워 볼 수 있습니다. 점검·포털 정보 수집도 같은 옵션을 받습니다.
+`data/` 를 덮어쓰기 전에 다른 폴더의 데이터로 먼저 띄워 볼 수 있습니다. 데이터 점검(`validate-data`)·포털 정보 수집도 같은 옵션을 받습니다. (화면·검색·AI 점검 `check:ui`·`check:search`·`check:ai` 는 `data/` 기준입니다. 사례 폴더의 화면 점검은 `examples/korea-sports-council/check.mjs`)
 
 ```bash
 npm start -- --data examples/korea-sports-council/data
@@ -20,7 +20,7 @@ node scripts/validate-data.mjs --data examples/korea-sports-council/data
 node scripts/fetch-portal-metadata.mjs --data examples/korea-sports-council/data
 ```
 
-> **실제 적용 사례:** 대한체육회가 공공데이터포털에 개방한 데이터 23건으로 화면 코드 수정 없이 띄워 본 기록이 [examples/korea-sports-council](../examples/korea-sports-council/README.md)에 있습니다. (필요한 데이터 항목, 바꾼 파일, 단계별 처리 시간, 화면, 갱신 절차, 한계)
+> **실제 적용 사례:** 대한체육회가 공공데이터포털에 개방한 데이터 23건으로 기관별 화면 코드 수정 없이(처음 이식할 때 KSPO 고정 문구를 설정값으로 정리) 띄워 본 기록이 [examples/korea-sports-council](../examples/korea-sports-council/README.md)에 있습니다. (필요한 데이터 항목, 바꾼 파일, 단계별 처리 시간, 화면, 갱신 절차, 한계)
 
 ## 2. 기관 이름·문구 바꾸기 — `data/site.json`
 

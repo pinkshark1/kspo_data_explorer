@@ -53,7 +53,7 @@ const lines = [
   "|---|---|---|---|",
   ...results.map((r) => `| ${r.title} | \`npm run ${r.id}\` | ${r.ok ? "통과" : "**실패**"} | ${r.line.replace(/\s*\|\s*/g, " · ")} |`),
   "",
-  "> 기본 검색 품질의 질문 세트는 개발자가 직접 만든 것이며, 개발 중 회귀를 확인하는 용도입니다. AI 경로 점검은 실제 AI 대신 모의 서버를 씁니다. 실제 키로 확인한 AI 응답은 같은 폴더의 `*-ai-probe.txt`(`npm run probe:ai`)와 `*-ai-compare.md`(`npm run compare:ai`)를 보세요.",
+  "> 기본 검색 품질의 질문 세트는 개발자가 직접 만든 것이며, 개발 중 회귀를 확인하는 용도입니다. AI 경로 점검은 실제 AI 대신 모의 서버를 씁니다. 실제 키로 확인한 AI 응답은 같은 폴더의 `*-ai-probe.txt`(`npm run probe:ai -- --save`)와 `*-ai-compare.md`(`npm run compare:ai`)를 보세요.",
   "",
   ...results.flatMap((r) => [`## ${r.title} — \`npm run ${r.id}\` (${r.seconds}초)`, "", "```text", r.output, "```", ""]),
 ];
