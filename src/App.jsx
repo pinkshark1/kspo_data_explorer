@@ -26,8 +26,13 @@ export default function App({ data }) {
   const [ideaFilter, setIdeaFilter] = useState(null); // { title, nos:Set } - 연계 아이디어에서 넘어온 경우
   const [operationPath, setOperationPath] = useState("");
   const [askSaved, setAskSaved] = useState(null); // 질문 검색에서 마지막으로 물어본 질문·결과 (다른 화면에 다녀와도 유지, API 키는 제외)
+  const [askRequest, setAskRequest] = useState(null); // 첫 화면에서 입력한 질문 - 질문 검색 화면이 열리면서 바로 찾는다
+  // 처음 보여줄 데이터: 설정의 대표 데이터(service.featuredDataset). 없으면 항목(컬럼) 정의가 있는 첫 데이터.
   const [selected, setSelected] = useState(
-    () => datasets.find((dataset) => data.cultureColumns[String(dataset.no)] || data.publicMeta[String(dataset.no)]) ?? datasets[0],
+    () =>
+      datasets.find((dataset) => dataset.no === site.service.featuredDataset) ??
+      datasets.find((dataset) => (data.cultureColumns[String(dataset.no)] ?? data.publicMeta[String(dataset.no)])?.columns?.length) ??
+      datasets[0],
   );
 
   const categories = useMemo(() => fieldOptions(datasets), [datasets]);
@@ -77,9 +82,18 @@ export default function App({ data }) {
     });
   };
 
+  // 조건 초기화: 필터와 함께 검색어도 지운다.
   const resetFilters = () => {
     setFilters(INITIAL_FILTERS);
+    setQuery("");
     setIdeaFilter(null);
+  };
+
+  // 첫 화면의 질문 입력: 질문 검색 화면으로 옮겨 바로 찾는다.
+  const askFromHome = (text) => {
+    setAskRequest({ text, id: Date.now() });
+    setView("ask");
+    window.scrollTo({ top: 0 });
   };
 
   // 안내띠의 "전체 데이터 보기"를 누르면 그 버튼이 사라지므로, 키보드 초점을 조건 영역으로 옮긴다.
@@ -122,6 +136,11 @@ export default function App({ data }) {
 
       {view === "explorer" && (
         <ExplorerView
+          intro={site.service.intro}
+          exampleQuestions={site.ai?.exampleQuestions ?? []}
+          onAsk={askFromHome}
+          query={query}
+          onClearQuery={() => setQuery("")}
           totalCount={datasets.length}
           categories={categories}
           cycleOptions={cycleOptions}
@@ -146,7 +165,7 @@ export default function App({ data }) {
         />
       )}
 
-      {view === "ask" && <AskView store={data} saved={askSaved} onSave={setAskSaved} onOpenDataset={selectDataset} />}
+      {view === "ask" && <AskView store={data} saved={askSaved} onSave={setAskSaved} onOpenDataset={selectDataset} request={askRequest} onConsumeRequest={() => setAskRequest(null)} />}
 
       {view === "map" && (
         <section className="standalone-content" id="main-content">

@@ -65,6 +65,8 @@
 | `service.name` / `fullName` | 서비스 이름(로고 옆) / 전체 이름(푸터) |
 | `service.bannerText` | 맨 위 안내띠 문구 |
 | `service.scope` | 푸터의 ‘데이터 안내’ 첫 문장 (안내 범위를 밝히는 문구) |
+| `service.intro` | (선택) 첫 화면 위쪽 소개 `{ title, text }`. 질문 입력칸과 예시 질문(`ai.exampleQuestions` 앞 3개)이 함께 나옴. 없으면 소개 영역을 보이지 않음 |
+| `service.featuredDataset` | (선택) 처음 열 때 보여 줄 대표 데이터의 `no`. 없으면 항목(컬럼) 정의가 있는 첫 데이터 |
 | `portals.public` / `portals.culture` | 포털 설정(둘 다 필요. 수록 데이터가 0건인 포털은 푸터의 건수·목록 바로가기에서 빠진다). `label`(이름), `shortLabel`(목록의 짧은 표기), `mark`(배지 글자 1자), `listUrl`(포털의 기관 데이터 목록 주소 - 원문 주소가 없을 때의 대체 링크), `homeUrl`, `termsNote`(이용 조건 문구, 문화빅데이터포털) |
 | `guide` | (선택) 사용방법 화면. 없으면 ‘사용방법’ 메뉴가 빠진다: `title`, `lead`, `video`, `poster`, `externalUrl`(선택), `steps[{title,text}]` |
 | `ai` | 질문 검색(AI 추천) 설정: `enabled`, `navLabel`, `modes`(`local`·`gemini`·`gateway`), `defaultMode`, `gemini{model,models[{model,label,jsonMode}],maxTokens,keyGuideUrl}`, `gateway{url,label}`, `exampleQuestions`, `notice`. 자세한 설명은 [AI_FEATURE.md](AI_FEATURE.md). 키는 넣지 않는다 |

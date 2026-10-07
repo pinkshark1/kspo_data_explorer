@@ -6,10 +6,11 @@ import SamplePanel from "./profile/SamplePanel.jsx";
 import RelatedPanel from "./profile/RelatedPanel.jsx";
 import MetaStrip from "./MetaStrip.jsx";
 
+// "API 기능" 탭은 오픈API 데이터에만 있다. (파일 데이터는 보여줄 내용이 없어 탭을 두지 않는다)
 const TABS = [
   { id: "summary", label: "한눈에 보기" },
-  { id: "tables", label: "테이블" },
-  { id: "columns", label: "컬럼" },
+  { id: "tables", label: "API 기능", apiOnly: true },
+  { id: "columns", label: "항목(컬럼)" },
   { id: "sample", label: "샘플 데이터" },
   { id: "related", label: "연관 데이터" },
 ];
@@ -31,7 +32,7 @@ export default function DatasetProfile({
   const portal = portalOf(dataset);
 
   const qualityMessage = detail.hasDefinition
-    ? "컬럼정의서의 데이터 타입·길이·PK·NOT NULL 정보까지 확인할 수 있습니다."
+    ? "항목마다 자료형·길이·고유 키·필수 값 여부까지 확인할 수 있습니다."
     : detail.apiSample
       ? `제공된 XML의 실제 API 응답 ${detail.rows.length}행도 함께 확인할 수 있습니다.`
       : detail.csvSample
@@ -39,8 +40,10 @@ export default function DatasetProfile({
         : "현재는 컬럼명과 한글명을 제공합니다.";
   const qualityTag = detail.hasDefinition ? "공식 컬럼정의서" : detail.apiSample ? "원본 XML 샘플" : detail.csvSample ? "원본 CSV 샘플" : "공식 메타데이터";
 
+  const tabs = TABS.filter((item) => !item.apiOnly || detail.isPublicApi);
+  const activeTab = tabs.some((item) => item.id === tab) ? tab : "summary";
   const tabCount = {
-    tables: detail.isPublicApi ? detail.operations.length : "—",
+    tables: detail.operations.length,
     columns: detail.columns.length,
     sample: detail.hasRows ? detail.rows.length : null,
     related: related.length,
@@ -109,15 +112,15 @@ export default function DatasetProfile({
         <article>
           <span className="summary-icon database">◎</span>
           <div>
-            <small>출처 시스템</small>
+            <small title="이 데이터를 만들거나 관리하는 공단의 업무시스템">만든 곳(업무시스템)</small>
             <strong>{dataset.sys}</strong>
           </div>
         </article>
         <article>
           <span className="summary-icon rows">▦</span>
           <div>
-            <small>확인된 컬럼</small>
-            <strong>{detail.hasColumns ? `${detail.columns.length}개` : "공식 정의서 없음"}</strong>
+            <small>데이터 항목(컬럼)</small>
+            <strong>{detail.hasColumns ? `${detail.columns.length}개` : "포털에 항목 설명 없음"}</strong>
           </div>
         </article>
       </section>
@@ -144,19 +147,19 @@ export default function DatasetProfile({
       <MetaStrip rows={infoRows} portalName={portalInfo.label} fetchedAt={metaFetchedAt} />
 
       <nav className="profile-tabs" aria-label="데이터 상세 메뉴">
-        {TABS.map((item) => (
-          <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => onChangeTab(item.id)}>
+        {tabs.map((item) => (
+          <button key={item.id} className={activeTab === item.id ? "active" : ""} onClick={() => onChangeTab(item.id)}>
             {item.label}
             {tabCount[item.id] != null && <small>{tabCount[item.id]}</small>}
           </button>
         ))}
       </nav>
 
-      {tab === "summary" && <OverviewPanel dataset={dataset} detail={detail} onOpenTab={onChangeTab} />}
-      {tab === "tables" && <TablesPanel detail={detail} onOpenTab={onChangeTab} />}
-      {tab === "columns" && <ColumnsPanel detail={detail} />}
-      {tab === "sample" && <SamplePanel detail={detail} onChangeOperation={onChangeOperation} />}
-      {tab === "related" && <RelatedPanel related={related} onSelect={onSelectDataset} />}
+      {activeTab === "summary" && <OverviewPanel dataset={dataset} detail={detail} onOpenTab={onChangeTab} />}
+      {activeTab === "tables" && <TablesPanel detail={detail} onOpenTab={onChangeTab} />}
+      {activeTab === "columns" && <ColumnsPanel detail={detail} />}
+      {activeTab === "sample" && <SamplePanel detail={detail} onChangeOperation={onChangeOperation} />}
+      {activeTab === "related" && <RelatedPanel related={related} onSelect={onSelectDataset} />}
     </section>
   );
 }

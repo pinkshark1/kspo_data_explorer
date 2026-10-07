@@ -797,6 +797,150 @@ select:focus-visible {
   padding: 30px 6px;
   font-size: 13px;
 }
+.empty-list p {
+  margin: 0 0 12px;
+}
+.empty-list div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.empty-list button {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--primary-strong);
+  cursor: pointer;
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+.empty-list button:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+/* 첫 화면 소개와 질문 입력 */
+.home-intro {
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--primary-soft);
+  padding: 22px 24px;
+}
+.home-intro h2 {
+  margin: 0 0 6px;
+  color: var(--ink);
+  font-size: 22px;
+  line-height: 1.35;
+}
+.home-intro > p {
+  margin: 0 0 14px;
+  color: var(--krds-gray-70);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.home-ask {
+  display: flex;
+  gap: 8px;
+}
+.home-ask input {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  border: 1px solid var(--krds-gray-30, #b1b8be);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 0 14px;
+  font-size: 16px;
+}
+.home-ask button {
+  flex: none;
+  min-width: 108px;
+  min-height: 48px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--primary-strong);
+  color: #fff;
+  cursor: pointer;
+  padding: 0 20px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.home-examples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.home-examples span {
+  color: var(--krds-gray-70);
+  font-size: 13px;
+}
+.home-examples button {
+  border: 1px solid var(--krds-gray-20);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--krds-gray-80);
+  cursor: pointer;
+  min-height: 36px;
+  padding: 6px 14px;
+  font-size: 13px;
+  text-align: left;
+}
+.home-examples button:hover {
+  border-color: var(--primary);
+}
+.query-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 8px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  padding: 2px 4px 2px 10px;
+  font-size: 13px;
+}
+.query-chip button {
+  border: 0;
+  background: transparent;
+  color: var(--krds-gray-70);
+  cursor: pointer;
+  min-width: 28px;
+  min-height: 28px;
+}
+/* 모바일: 데이터 목록이 첫 화면 안에서 보이도록 소개는 제목과 질문 입력만 남긴다 */
+@media (max-width: 640px) {
+  .home-intro {
+    margin-bottom: 8px;
+    padding: 10px 12px;
+  }
+  .home-intro h2 {
+    margin-bottom: 6px;
+    font-size: 15px;
+    line-height: 1.3;
+  }
+  .home-intro > p,
+  .home-examples {
+    display: none;
+  }
+  .home-ask input,
+  .home-ask button {
+    min-height: 44px;
+  }
+  .home-ask button {
+    min-width: 0;
+    padding: 0 14px;
+  }
+}
+/* 질문 결과 제목은 결과가 나오면 초점을 받는다. 마우스로 온 경우에는 초점 테두리를 그리지 않는다. */
+.ask-heading:focus:not(:focus-visible) {
+  outline: none;
+}
+#main-content {
+  scroll-margin-top: 96px;
+}
 .profile {
   background: #fff;
   min-width: 0;
@@ -1218,6 +1362,13 @@ select:focus-visible {
   background: var(--krds-gray-5);
   color: var(--krds-gray-70);
   font-weight: 700;
+}
+.data-table th .column-code {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
 }
 .data-table th,
 .data-table td {
@@ -2999,6 +3150,17 @@ select:focus-visible {
   padding: 3px 8px;
   font-size: 11px;
   font-weight: 700;
+}
+.ask-asked {
+  margin: 0 0 8px;
+  color: var(--ink, #1e2124);
+  font-weight: 600;
+}
+.ask-asked span {
+  margin-right: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
 }
 .ask-confidence {
   color: var(--krds-gray-70);

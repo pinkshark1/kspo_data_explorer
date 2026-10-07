@@ -4,8 +4,8 @@
 // explorer-data.json 의 payloads 배열 위치. (배열 순서를 바꾸면 이 표도 함께 바꾼다.)
 export const PAYLOAD = {
   catalog: 0, // 데이터셋 목록 (배열)
-  cultureColumns: 1, // 문화빅데이터플랫폼 컬럼정의서   { [번호]: { columns, sourceUrl, ... } }
-  cultureSamples: 2, // 문화빅데이터플랫폼 CSV 샘플      { [번호]: { columns, rows, totalRows } }
+  cultureColumns: 1, // 문화빅데이터포털 컬럼정의서   { [번호]: { columns, sourceUrl, ... } }
+  cultureSamples: 2, // 문화빅데이터포털 CSV 샘플      { [번호]: { columns, rows, totalRows } }
   publicMeta: 3, // 공공데이터포털 컬럼·오퍼레이션       { [번호]: { columns, operations, sourceUrl, ... } }
   publicSamples: 4, // 공공데이터포털 파일 CSV 샘플      { [번호]: { columns, rows, totalRows } }
   apiSamples: 5, // 공공데이터포털 OpenAPI 응답 샘플     { [번호]: [ { path, operationName, columns, rows, totalCount } ] }

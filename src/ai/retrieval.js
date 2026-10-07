@@ -9,7 +9,8 @@ import { deliveryOf, shortField } from "../lib/catalog.js";
 import { STOPWORDS, STOP_STEMS, SUFFIXES, THESAURUS, VERB_ENDINGS } from "./thesaurus.js";
 
 const FIELD_WEIGHT = { name: 3, field: 2, kw: 1.6, sys: 1.2, ops: 1.1, columns: 0.9, desc: 0.8 };
-const FIELD_LABEL = { name: "이름", field: "분야", kw: "키워드", sys: "출처 시스템", ops: "API 기능", columns: "컬럼", desc: "설명" };
+// 이용자에게 보여 줄 일치 위치 이름
+const FIELD_LABEL = { name: "데이터 이름", field: "분야", kw: "키워드", sys: "만든 업무시스템", ops: "API 기능", columns: "데이터 항목", desc: "설명" };
 const FIELDS = Object.keys(FIELD_WEIGHT);
 const EXPANDED_WEIGHT = 0.5;
 const ORG_PREFIX = /^서울올림픽기념국민체육진흥공단\s*/;
@@ -173,7 +174,7 @@ function scoreDocument(index, doc, baseTerms, expandedTerms, intent) {
   return { total, matches, coverage };
 }
 
-// "이름: ‘체육시설’, ‘안전’ + 관련어 ‘안전점검’ / 분야: ‘체육시설’" 처럼 일치한 위치별로 묶어 한 줄로 설명한다. (최대 2곳)
+// "데이터 이름에 ‘체육시설’·‘안전’ 낱말이 들어 있습니다(비슷한 말 ‘안전점검’ 포함)." 처럼 일치한 위치별로 한 문장씩 설명한다. (최대 2곳)
 function describeMatches(matches) {
   const byField = new Map();
   for (const match of matches) {
@@ -181,15 +182,16 @@ function describeMatches(matches) {
     const entry = byField.get(match.field);
     (match.via ? entry.related : entry.base).push(match.term);
   }
-  const quote = (terms) => terms.map((term) => `‘${term}’`).join(", ");
+  const quote = (terms) => terms.map((term) => `‘${term}’`).join("·");
   return FIELDS.filter((field) => byField.has(field))
     .slice(0, 2)
     .map((field) => {
       const { base, related } = byField.get(field);
-      const parts = [base.length ? quote(base) : null, related.length ? `${base.length ? "+ " : ""}관련어 ${quote(related.slice(0, 2))}` : null].filter(Boolean);
-      return `${FIELD_LABEL[field]}: ${parts.join(" ")}`;
+      const similar = quote(related.slice(0, 2));
+      if (!base.length) return `${FIELD_LABEL[field]}에 비슷한 말 ${similar} 낱말이 들어 있습니다.`;
+      return `${FIELD_LABEL[field]}에 ${quote(base)} 낱말이 들어 있습니다${related.length ? `(비슷한 말 ${similar} 포함)` : ""}.`;
     })
-    .join(" / ");
+    .join(" ");
 }
 
 // 붙여 쓴 말("채용공고")을 카탈로그에 있는 낱말("채용", "공고")로 나눈다.

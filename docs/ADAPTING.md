@@ -30,6 +30,7 @@ node scripts/fetch-portal-metadata.mjs --data examples/korea-sports-council/data
 | 문장 속 기관 호칭·로고 글자 | `organization.callName`(예: `공단`, 없으면 기관명), `organization.mark`(없으면 약칭 첫 글자) |
 | 맨 위 안내띠 | `service.bannerText` |
 | 서비스 범위 문구 | `service.scope` |
+| 첫 화면 소개·대표 데이터 (선택) | `service.intro`, `service.featuredDataset` |
 | 포털 이름·목록 주소 | `portals.public`, `portals.culture` (기관이 쓰는 포털에 맞게 수정) |
 | 사용방법 영상·단계 | `guide.video`, `guide.poster`, `guide.steps` (영상이 없으면 `video`를 지우고 단계 안내만 둬도 됨. `guide` 자체가 없으면 ‘사용방법’ 메뉴가 빠짐) |
 | 연계 아이디어 | `ideas[]` (없으면 빈 배열 `[]` - ‘연계 아이디어’ 메뉴가 빠짐) |

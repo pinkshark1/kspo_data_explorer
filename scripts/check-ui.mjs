@@ -71,7 +71,19 @@ try {
   await desktop.fill(".global-search input", "zzzz없는단어");
   await desktop.waitForTimeout(200);
   check("검색 결과가 없으면 안내 문구가 나온다", (await desktop.locator(".empty-list").count()) === 1);
-  await desktop.fill(".global-search input", "");
+  check("검색 결과가 없으면 검색어를 보여 주고 질문 검색·지우기 버튼을 준다", (await desktop.locator(".empty-list").innerText()).includes("zzzz없는단어") && (await desktop.locator(".empty-list button").count()) === 2 && (await desktop.locator(".query-chip").count()) === 1);
+  await desktop.locator(".empty-list button", { hasText: "지우기" }).click();
+  check("‘조건·검색어 지우기’를 누르면 검색어까지 지워진다", (await desktop.inputValue(".global-search input")) === "" && (await desktop.locator(".dataset-list button").count()) > 100);
+
+  // 첫 화면 소개: 질문을 입력하면 질문 검색으로 넘어가 바로 찾는다
+  check("첫 화면에 서비스 소개와 질문 입력이 있다", (await desktop.locator(".home-intro h2").count()) === 1 && (await desktop.locator("#home-question").count()) === 1);
+  await desktop.fill("#home-question", "체육시설 안전 데이터");
+  await desktop.locator(".home-ask button").click();
+  await desktop.waitForSelector(".ask-list .ask-item");
+  check("첫 화면에서 질문하면 질문 검색 결과가 나오고 어떤 질문의 결과인지 보인다", (await desktop.inputValue("#ask-question")) === "체육시설 안전 데이터" && (await desktop.locator(".ask-asked").innerText()).includes("체육시설 안전 데이터"));
+  await desktop.locator("button.brand").click();
+  await desktop.waitForSelector(".dataset-list");
+  check("파일 데이터 상세에는 빈 ‘API 기능’ 탭이 없다", (await desktop.locator(".profile-tabs button", { hasText: "API 기능" }).count()) === 0);
 
   // 데이터 정보 + 원문 버튼
   await desktop.locator(".dataset-list button").first().click();
@@ -152,7 +164,7 @@ try {
   await desktop.locator(".ask-examples button").first().click();
   await desktop.waitForSelector(".ask-list .ask-item");
   const askCount = await desktop.locator(".ask-list .ask-item").count();
-  check("질문 검색: 예시 질문을 누르면 추천 데이터와 일치 이유가 나온다", askCount > 0 && (await desktop.locator(".ask-reason").first().innerText()).includes("일치"), `${askCount}건`);
+  check("질문 검색: 예시 질문을 누르면 추천 데이터와 일치 이유가 나온다", askCount > 0 && (await desktop.locator(".ask-reason").first().innerText()).includes("낱말이 들어 있습니다"), `${askCount}건`);
   await desktop.fill("#ask-question", "오늘 날씨 어때");
   await desktop.getByRole("button", { name: "질문하기" }).click();
   await desktop.waitForSelector(".ask-result .metadata-empty");

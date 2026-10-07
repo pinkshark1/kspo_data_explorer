@@ -18,11 +18,10 @@ function modelsOf(config) {
 // 설정(site.json ai.modes)에서 켜진 방식만 보여준다. 기본 검색은 항상 있다.
 function availableModes(ai) {
   const wanted = ai.modes ?? ["local"];
-  const modes = [{ id: "local", label: "기본 검색", hint: "AI를 쓰지 않고 이 브라우저 안에서만 찾습니다." }];
+  const modes = [{ id: "local", label: "기본 검색", hint: "키 없이 누구나 바로 씁니다. 질문 속 낱말과 비슷한 말로 이 브라우저 안에서 찾습니다." }];
   for (const [id, info] of Object.entries(KEY_MODES)) {
     if (wanted.includes(id) && ai[id]) {
-      const list = modelsOf(ai[id]);
-      const hint = list.length > 1 ? `내 ${info.keyLabel}로 ${list.map((entry) => entry.label).join(" · ")} 중 골라 물어봅니다.` : `내 ${info.keyLabel}로 ${list[0].model} 모델에 물어봅니다.`;
+      const hint = `Google AI가 질문을 읽고 추천 이유와 함께 쓸 데이터 조합까지 알려 줍니다. 본인의 ${info.keyLabel}(무료 발급)가 필요합니다.`;
       modes.push({ id, label: `AI 추천 (${info.name})`, hint });
     }
   }
@@ -68,7 +67,8 @@ function ResultItem({ item, rank, portals, onOpen }) {
 }
 
 // saved: 이전에 물어본 질문·방식·결과 (다른 화면에 다녀와도 유지). API 키는 여기에 담기지 않는다.
-export default function AskView({ store, saved, onSave, onOpenDataset }) {
+// request: 첫 화면에서 넘어온 질문 { text, id }. 화면이 열리면 바로 찾고 onConsumeRequest 로 비운다.
+export default function AskView({ store, saved, onSave, onOpenDataset, request, onConsumeRequest }) {
   const { site } = store;
   const ai = site.ai ?? {};
   const modes = useMemo(() => availableModes(ai), [ai]);
@@ -133,6 +133,16 @@ export default function AskView({ store, saved, onSave, onOpenDataset }) {
       setStatus("idle");
     }
   };
+
+  const handledRequest = useRef(null);
+  useEffect(() => {
+    if (!request || handledRequest.current === request.id) return;
+    handledRequest.current = request.id;
+    setQuestion(request.text);
+    ask(request.text);
+    onConsumeRequest?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request]);
 
   const cancel = () => {
     abortRef.current?.abort();
@@ -284,6 +294,9 @@ export default function AskView({ store, saved, onSave, onOpenDataset }) {
 
         {status !== "idle" && result && (
           <>
+            <p className="ask-asked">
+              <span>{formError ? "이전 질문의 결과" : "질문"}</span> “{result.question}”
+            </p>
             {result.error && (
               <p className="ask-error" role="alert">
                 {result.error} 기본 검색 결과를 대신 보여드립니다.

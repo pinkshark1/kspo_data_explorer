@@ -89,11 +89,11 @@ Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'
 - ‘질문 검색’에서 예시 질문이 결과를 내는지, (AI 방식을 켠 경우) 실제 키·서버로 질문해 응답과 비용을 확인했는지
 - 모바일(폭 360~390px)에서 상단 메뉴가 잘리지 않고 가로 스크롤이 생기지 않는지
 - 개발자 도구에 404, JSON 파싱 오류, CSP 차단 오류가 없는지
-- `data/explorer-data.json`이 외부에서 직접 조회 가능한 공개 데이터 범위인지, 관계도에 나오는 정보시스템 이름을 공개해도 되는지 정보보호 담당 확인을 받았는지
+- `data/explorer-data.json`이 외부에서 직접 조회 가능한 공개 데이터 범위인지, 관계도에 나오는 정보시스템 이름이 공개 범위에 맞는지
 - Chrome 및 Edge 최신 사내 표준 버전에서 확인했는지
 
 ## 업데이트와 롤백
 
-- 데이터만 갱신할 때는 `data/explorer-data.json` 을 교체하고 `npm run fetch:meta` 로 `data/portal-meta.json` 을 다시 수집합니다. 자세한 절차는 `README.md` 의 ‘데이터 갱신’을 참고하세요.
+- 데이터만 갱신할 때는 `data/explorer-data.json` 을 교체하고 `npm run fetch:meta` 로 `data/portal-meta.json` 을 다시 수집합니다. 자세한 절차는 [docs/ADAPTING.md](docs/ADAPTING.md)(데이터 바꾸기)와 [docs/DATA_SCHEMA.md](docs/DATA_SCHEMA.md)를 참고하세요.
 - 화면 기능을 변경할 때는 `src/` 를 고치고 `npm run build` 로 `assets/app.js`·`assets/app.css` 를 다시 만듭니다.
 - 운영 반영 전 기존 디렉터리를 버전별로 보관하면 장애 발생 시 이전 파일 세트로 즉시 롤백할 수 있습니다.

@@ -30,7 +30,10 @@ export function resolveDetail(dataset, store, operationPath) {
   const apiSample = apiOperations.find((operation) => operation.path === operationPath) ?? apiOperations[0];
   const sample = csvSample ?? apiSample;
 
-  const tableColumns = apiSample?.columns ?? csvSample?.columns.map((name) => ({ name, label: name })) ?? columns;
+  // CSV 샘플의 머리글은 영문 코드뿐이므로, 컬럼 정의에 같은 이름이 있으면 한글명을 붙인다.
+  const labelOf = new Map(columns.map((column) => [String(column.name).toUpperCase(), column.label]));
+  const tableColumns =
+    apiSample?.columns ?? csvSample?.columns.map((name) => ({ name, label: labelOf.get(String(name).toUpperCase()) || name })) ?? columns;
   const rows = sample?.rows ?? [];
 
   return {

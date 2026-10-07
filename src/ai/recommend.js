@@ -56,7 +56,7 @@ export async function recommend({ question, mode, store, index, apiKey, model, s
   const found = search(index, trimmed, { limit: 12 });
   const localRecommendations = found.results.slice(0, LIMITS.recommendations).map((result) => ({
     dataset: result.dataset,
-    reason: result.reason ? `일치: ${result.reason}` : "",
+    reason: result.reason || "",
     relevance: null,
     source: "local",
   }));

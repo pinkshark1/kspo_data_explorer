@@ -75,7 +75,7 @@ try {
   const href = (await page.locator(".request-button").first().getAttribute("href")) ?? "";
   check("상세: 데이터 원문 버튼이 공공데이터포털 상세 페이지로 연결된다", /^https:\/\/www\.data\.go\.kr\/data\/\d+\/fileData\.do$/.test(href), href);
   await shot(page, "2-detail");
-  await page.locator(".profile").locator("button", { hasText: /^컬럼\d*$/ }).click();
+  await page.locator(".profile").locator("button", { hasText: /^항목\(컬럼\)\d*$/ }).click();
   const columnRows = await page.locator(".dictionary tbody tr").count();
   check("상세: 컬럼 사전에 포털의 컬럼 정보가 나온다", columnRows > 0, `${columnRows}개`);
   await shot(page, "3-columns");
@@ -98,7 +98,7 @@ try {
   await page.locator(".ask-examples button").first().click();
   await page.waitForSelector(".ask-list .ask-item");
   const asked = await page.locator(".ask-list .ask-item").count();
-  check("질문 검색(기본 검색): 예시 질문에 추천 데이터와 일치 이유가 나온다", asked > 0 && (await page.locator(".ask-reason").first().innerText()).includes("일치"), `${asked}건`);
+  check("질문 검색(기본 검색): 예시 질문에 추천 데이터와 일치 이유가 나온다", asked > 0 && (await page.locator(".ask-reason").first().innerText()).includes("낱말이 들어 있습니다"), `${asked}건`);
   await shot(page, "5-ask");
   // 나머지 예시 질문: 이전 결과가 남아 있는 것을 세지 않도록 결과 안내 문장이 바뀔 때까지 기다린다.
   const exampleCount = await page.locator(".ask-examples button").count();
