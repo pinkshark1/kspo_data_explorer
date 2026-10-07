@@ -90,6 +90,7 @@
       "url": "",
       "label": "기관 AI 서버"
     },
+    "examplesFile": "ai-examples.json",
     "exampleQuestions": [
       "체육시설 안전과 연계할 수 있는 데이터가 뭐 있어?",
       "장애인 대상 체력 측정 데이터가 있을까?",

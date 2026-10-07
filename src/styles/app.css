@@ -3142,6 +3142,34 @@ select:focus-visible {
   font-size: 15px;
   line-height: 1.7;
 }
+.ask-summary p.ask-saved-note {
+  color: var(--krds-gray-70);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.ask-saved-open {
+  display: block;
+  margin: 0 0 14px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-md);
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+  cursor: pointer;
+  min-height: 44px;
+  padding: 8px 16px;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+}
+.ask-saved-open small {
+  color: var(--krds-gray-70);
+  font-weight: 500;
+}
+.ask-examples-note {
+  flex-basis: 100%;
+  color: var(--krds-gray-70);
+  font-size: 12px;
+}
 .ask-badge {
   color: #fff;
   background: var(--krds-info-60);

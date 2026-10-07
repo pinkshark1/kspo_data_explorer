@@ -53,6 +53,7 @@
     "maxTokens": 16000,
     "keyGuideUrl": "https://aistudio.google.com/apikey" },
   "gateway": { "url": "", "label": "기관 AI 서버" },   // url 이 비어 있으면 gateway 는 나타나지 않음
+  "examplesFile": "ai-examples.json", // (선택) 키 없이 보여 줄 저장된 AI 추천 예시 (npm run export:ai-examples 로 생성)
   "exampleQuestions": [ "..." ],    // 화면의 예시 질문 (모두 결과가 나오는지 npm run check:search 가 확인)
   "notice": "추천 결과는 참고용입니다. ..."
 }
@@ -81,6 +82,10 @@
 - 모델을 고르는 값은 화면에서 오지만 **설정에 있는 모델만** 쓰입니다. (`configFor`, `check:ai` 가 확인)
 - Gemma 가 JSON 형식을 지키지 않으면 ‘AI 응답 형식이 올바르지 않습니다’ 안내와 함께 기본 검색 결과가 나옵니다. 그 경우 `jsonMode` 설정이나 형식 지시문(`src/ai/prompt.js` 의 `FORMAT_HINT`)을 손보거나, `ai.gemini.models` 에서 해당 모델을 빼면 됩니다.
 - 다른 모델을 더하려면 `models` 에 `{ "model": "...", "label": "..." }` 를 추가하면 됩니다. (같은 Gemini API 로 부를 수 있는 모델만. 다른 서비스는 `src/ai/providers/` 에 같은 형태의 파일을 추가)
+
+**키 없이 보는 AI 추천 예시** — `npm run export:ai-examples [-- 모델]` (`scripts/export-ai-examples.mjs`)
+
+가장 최근 비교 기록(`docs/evidence/*-ai-compare.json`)에서 기본 모델이 예시 질문에 실제로 준 응답을 `data/ai-examples.json` 으로 옮깁니다. 화면은 예시 질문에 대해 키 없이도 이 응답을 ‘AI 추천 예시’로 보여 주며, 받은 날짜·모델을 함께 적고 새로 AI 를 부르지 않습니다(`check:ai` 가 외부 요청이 없는지 확인). 응답 문장은 고치지 않습니다.
 
 **실제 키로 모델 점검** — `npm run probe:ai [-- --save] [모델 ...]` (`scripts/probe-ai-models.mjs`)
 

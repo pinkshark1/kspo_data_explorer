@@ -375,6 +375,25 @@ async function checkBrowser() {
       await context.close();
     }
 
+    // --- 저장된 AI 추천 예시: 키 없이, Google 로 요청하지 않고 실제로 받았던 응답을 보여 준다
+    {
+      const saved = JSON.parse(fs.readFileSync(path.join(root, "data", "ai-examples.json"), "utf8"));
+      const { context, page, requests } = await openAsk(browser, base);
+      await page.locator(".ask-examples button").first().click();
+      await page.waitForSelector(".ask-saved-open");
+      check("[저장된 예시] 기본 검색 결과에서 같은 질문의 AI 추천 예시를 열 수 있다", (await page.locator(".ask-saved-open").count()) === 1);
+      await page.locator(".ask-saved-open").click();
+      await page.waitForSelector(".ask-summary.saved");
+      const note = await page.locator(".ask-saved-note").innerText();
+      check("[저장된 예시] ‘AI 추천 예시’ 표시와 날짜·모델 안내가 붙고 추천·조합이 나온다", (await page.locator(".ask-summary.saved .ask-badge").innerText()) === "AI 추천 예시" && note.includes(saved.date) && note.includes(saved.label) && (await page.locator(".ask-list").first().locator(".ask-item").count()) === saved.examples[0].recommendations.length, note.slice(0, 40));
+      await page.getByLabel(GEMINI.mode, { exact: false }).check();
+      await page.locator(".ask-examples button").nth(1).click();
+      await page.waitForSelector(".ask-summary.saved");
+      check("[저장된 예시] AI 방식에서 키 없이 예시 질문을 하면 오류 대신 저장된 예시가 나온다", (await page.locator("#ask-form-error").count()) === 0 && (await page.locator(".ask-asked").innerText()).includes(saved.examples[1].question));
+      check("[저장된 예시] 예시를 보는 동안 외부(Google)로 나간 요청이 없다", !requests.some((url) => url.startsWith(GEMINI.origin)));
+      await context.close();
+    }
+
     // --- 구조화 출력이 거절되면 형식 지시문으로 재시도
     {
       const { context, page } = await openAsk(browser, base);

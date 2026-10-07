@@ -17,7 +17,8 @@
     "probe:ai": "node scripts/probe-ai-models.mjs",
     "compare:ai": "node scripts/compare-ai.mjs",
     "evidence": "node scripts/save-evidence.mjs",
-    "ai-gateway": "node scripts/ai-gateway.mjs"
+    "ai-gateway": "node scripts/ai-gateway.mjs",
+    "export:ai-examples": "node scripts/export-ai-examples.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

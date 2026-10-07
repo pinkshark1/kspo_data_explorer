@@ -69,7 +69,7 @@
 | `service.featuredDataset` | (선택) 처음 열 때 보여 줄 대표 데이터의 `no`. 없으면 항목(컬럼) 정의가 있는 첫 데이터 |
 | `portals.public` / `portals.culture` | 포털 설정(둘 다 필요. 수록 데이터가 0건인 포털은 푸터의 건수·목록 바로가기에서 빠진다). `label`(이름), `shortLabel`(목록의 짧은 표기), `mark`(배지 글자 1자), `listUrl`(포털의 기관 데이터 목록 주소 - 원문 주소가 없을 때의 대체 링크), `homeUrl`, `termsNote`(이용 조건 문구, 문화빅데이터포털) |
 | `guide` | (선택) 사용방법 화면. 없으면 ‘사용방법’ 메뉴가 빠진다: `title`, `lead`, `video`, `poster`, `externalUrl`(선택), `steps[{title,text}]` |
-| `ai` | 질문 검색(AI 추천) 설정: `enabled`, `navLabel`, `modes`(`local`·`gemini`·`gateway`), `defaultMode`, `gemini{model,models[{model,label,jsonMode}],maxTokens,keyGuideUrl}`, `gateway{url,label}`, `exampleQuestions`, `notice`. 자세한 설명은 [AI_FEATURE.md](AI_FEATURE.md). 키는 넣지 않는다 |
+| `ai` | 질문 검색(AI 추천) 설정: `enabled`, `navLabel`, `modes`(`local`·`gemini`·`gateway`), `defaultMode`, `gemini{model,models[{model,label,jsonMode}],maxTokens,keyGuideUrl}`, `gateway{url,label}`, `exampleQuestions`, `examplesFile`(선택, 키 없이 보여 줄 저장된 AI 추천 예시 파일 - `data/` 안의 파일 이름), `notice`. 자세한 설명은 [AI_FEATURE.md](AI_FEATURE.md). 키는 넣지 않는다 |
 | `ideasNotice` | 연계 아이디어 화면 상단의 유의 문구 |
 | `ideas[]` | 연계 아이디어(빈 배열이면 ‘연계 아이디어’ 메뉴가 빠진다): `field`(제목), `scenario`, `data`, `partner`, `priority`(`상`/`중`/`하`), `datasetNos`(관련 데이터 번호 배열) |
 

@@ -62,6 +62,9 @@ export async function loadAppData() {
 
   assertSiteConfig(site);
 
+  // 저장된 AI 추천 예시(키 없이 보여 줄 실제 응답). site.json 의 ai.examplesFile 이 있을 때만 읽는다. (없거나 못 읽어도 화면은 동작)
+  const aiExamples = site.ai?.examplesFile ? await fetchOptionalJson(`../data/${site.ai.examplesFile}`, "AI 추천 예시") : null;
+
   const payloads = explorer?.payloads;
   if (!Array.isArray(payloads) || payloads.length !== PAYLOAD_COUNT || !Array.isArray(payloads[PAYLOAD.catalog])) {
     throw new Error("데이터 파일 형식이 올바르지 않습니다.");
@@ -78,5 +81,6 @@ export async function loadAppData() {
     publicMeta: payloads[PAYLOAD.publicMeta],
     publicSamples: payloads[PAYLOAD.publicSamples],
     apiSamples: payloads[PAYLOAD.apiSamples],
+    aiExamples: Array.isArray(aiExamples?.examples) ? aiExamples : null,
   };
 }

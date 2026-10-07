@@ -97,6 +97,36 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  // 저장된 AI 추천 예시: 실제 키로 받은 응답을 data/ai-examples.json 에 둔 것. 예시 질문이면 키 없이 보여 준다. (새로 AI 를 부르지 않음)
+  const savedExamples = store.aiExamples;
+  const exampleFor = (text) => savedExamples?.examples.find((entry) => entry.question === String(text ?? "").trim());
+  const byNo = useMemo(() => new Map(store.datasets.map((dataset) => [dataset.no, dataset])), [store]);
+  const showSavedExample = async (text) => {
+    const example = exampleFor(text);
+    if (!example) return;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setFormError("");
+    const local = await recommend({ question: example.question, mode: "local", store, index });
+    const next = {
+      ...local,
+      mode,
+      usedAi: true,
+      saved: { date: savedExamples.date, label: savedExamples.label },
+      summary: example.summary,
+      recommendations: example.recommendations
+        .map((item) => ({ dataset: byNo.get(item.no), reason: item.reason, relevance: item.relevance, source: "ai" }))
+        .filter((item) => item.dataset),
+      combinations: example.combinations.map((combo) => ({ title: combo.title, idea: combo.idea, datasets: combo.nos.map((no) => byNo.get(no)).filter(Boolean) })),
+      error: null,
+    };
+    setQuestion(example.question);
+    setResult(next);
+    setStatus("done");
+    setLiveMessage(`저장된 AI 추천 예시 ${next.recommendations.length}건을 보여 줍니다.`);
+    onSave({ question: example.question, mode, result: { ...next, restored: true } });
+  };
+
   // 결과가 나오면 키보드·화면낭독 사용자가 결과를 바로 읽을 수 있게 초점을 결과 제목으로 옮긴다.
   useEffect(() => {
     if (status === "done" && result && !result.restored) headingRef.current?.focus();
@@ -111,6 +141,11 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
       return;
     }
     if (keyMode && !apiKey.trim()) {
+      // 키가 없어도 예시 질문이면 저장된 실제 응답을 보여 준다
+      if (exampleFor(trimmed)) {
+        showSavedExample(trimmed);
+        return;
+      }
       setFormError(`AI 추천을 쓰려면 ${keyMode.keyLabel}를 입력해 주세요. 키 없이 쓰려면 ‘기본 검색’을 선택하세요.`);
       keyRef.current?.focus();
       return;
@@ -269,6 +304,7 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
         {ai.exampleQuestions?.length > 0 && (
           <div className="ask-examples">
             <span>이런 질문을 해 보세요</span>
+            {savedExamples && <small className="ask-examples-note">예시 질문은 키 없이도 저장된 AI 추천 예시를 볼 수 있습니다.</small>}
             {ai.exampleQuestions.map((text) => (
               <button type="button" key={text} onClick={() => useExample(text)}>
                 {text}
@@ -304,10 +340,21 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
             )}
 
             {result.usedAi && result.summary && (
-              <div className="ask-summary">
-                <span className="ask-badge">AI 안내</span>
+              <div className={`ask-summary${result.saved ? " saved" : ""}`}>
+                <span className="ask-badge">{result.saved ? "AI 추천 예시" : "AI 안내"}</span>
                 <p>{result.summary}</p>
+                {result.saved && (
+                  <p className="ask-saved-note">
+                    {result.saved.date}에 {result.saved.label}로 실제로 받은 응답을 저장해 둔 예시입니다. 다른 질문은 본인 키로 ‘AI 추천’을 쓰면 새로 받을 수 있습니다.
+                  </p>
+                )}
               </div>
+            )}
+
+            {!result.usedAi && exampleFor(result.question) && (
+              <button type="button" className="ask-saved-open" onClick={() => showSavedExample(result.question)}>
+                같은 질문의 AI 추천 예시 보기 <small>(키 없이 · 저장된 실제 응답)</small>
+              </button>
             )}
 
             {!result.usedAi && result.recommendations.length > 0 && (
