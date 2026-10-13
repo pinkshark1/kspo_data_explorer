@@ -120,12 +120,33 @@ await check("사용 권한이 없는 0 한도와 일반 429를 일일 한도 소
   assert.deepEqual(await (await busy.handle(request(), env)).json(), { error: "busy" });
 });
 await check("서버 인증·설정·일시 오류는 안전한 오류로만 전달", async () => {
-  for (const status of [400, 401, 403, 404, 500, 503]) {
-    const { handle } = harness(() => json({ error: { message: privateValue } }, status));
+  for (const status of [400, 401, 403, 404]) {
+    const { handle, calls } = harness(() => json({ error: { message: privateValue } }, status));
     const response = await handle(request(), env);
     assert.equal(response.status, 502);
     assert.deepEqual(await response.json(), { error: "upstream" });
+    assert.equal(calls.length, 1, "일시 오류가 아니면 다시 묻지 않는다");
   }
+});
+await check("Google 일시 과부하(500·503)는 짧게 다시 묻고, 계속되면 혼잡으로 안내", async () => {
+  const overloaded = (status) => json({ error: { code: status, status: "UNAVAILABLE", message: privateValue } }, status);
+  for (const status of [500, 503]) {
+    let count = 0;
+    const recovered = harness(() => (count++ === 0 ? overloaded(status) : json(responseData())), { retryDelaysMs: [0, 0] });
+    const ok = await recovered.handle(request(), env);
+    assert.equal(ok.status, 200);
+    assert.equal(recovered.calls.length, 2);
+    assert.equal(recovered.verifications.length, 1, "방문자 토큰은 한 번만 확인한다");
+    const stuck = harness(() => overloaded(status), { retryDelaysMs: [0, 0] });
+    const response = await stuck.handle(request(), env);
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { error: "busy" });
+    assert.equal(response.headers.get("retry-after"), "30");
+    assert.equal(stuck.calls.length, 3);
+  }
+  const html = harness(() => new Response("<html>unavailable</html>", { status: 503 }), { retryDelaysMs: [0] });
+  assert.equal((await html.handle(request(), env)).status, 503);
+  assert.equal(html.calls.length, 2);
 });
 await check("외부 서비스 리디렉션을 따라가지 않아 키와 방문자 토큰을 다른 주소로 보내지 않음", async () => {
   const redirected = () => new Response(null, { status: 302, headers: { Location: "https://evil.example" } });

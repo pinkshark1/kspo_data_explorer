@@ -74,7 +74,18 @@ export function quotaFacts(data) {
   return { error: "shared_quota", quota, ...(seconds > 0 && seconds <= 86_400 ? { retryAfterSeconds: seconds } : {}) };
 }
 
-export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args), timeoutMs = 55_000, maxConcurrent = 4 } = {}) {
+function pause(ms, signal) {
+  if (!ms) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, ms);
+    function done() { clearTimeout(timer); signal.removeEventListener("abort", done); resolve(); }
+    signal.addEventListener("abort", done, { once: true });
+  });
+}
+
+// Google이 일시 과부하(500·503 "high demand")로 즉시 거절하면 짧게 기다렸다 다시 묻는다.
+// 한도 소진(429)은 다시 묻지 않는다.
+export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args), timeoutMs = 55_000, maxConcurrent = 4, retryDelaysMs = [1_000, 2_500] } = {}) {
   // 동시 처리 수는 Worker 인스턴스별 보호 장치다. 전체 Google 한도는 Free 프로젝트가 적용한다.
   let active = 0;
   return async function handle(request, env) {
@@ -125,19 +136,29 @@ export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args),
       catch { return send(503, { error: "unavailable" }); }
       if (verified.success !== true || verified.action !== "shared-ai" || verified.hostname !== new URL(origin).hostname) return send(403, { error: "verification_failed" });
       if (controller.signal.aborted) return send(499, { error: "cancelled" });
-      const response = await fetchImpl(GEMINI_URL, {
-        method: "POST", redirect: "manual",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY.trim() },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: SYSTEM }] },
-          contents: [{ role: "user", parts: [{ text: buildUserMessage(input.question, input.candidates) }] }],
-          generationConfig: { maxOutputTokens: 8192, responseMimeType: "application/json", responseJsonSchema: AI_SCHEMA },
-        }),
-        signal: controller.signal,
+      const geminiBody = JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM }] },
+        contents: [{ role: "user", parts: [{ text: buildUserMessage(input.question, input.candidates) }] }],
+        generationConfig: { maxOutputTokens: 8192, responseMimeType: "application/json", responseJsonSchema: AI_SCHEMA },
       });
+      let response;
       let data;
-      try { data = JSON.parse(await boundedText(response, MAX_RESPONSE_BYTES)); }
-      catch { return send(502, { error: "upstream" }); }
+      for (let attempt = 0; ; attempt += 1) {
+        response = await fetchImpl(GEMINI_URL, {
+          method: "POST", redirect: "manual",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY.trim() },
+          body: geminiBody,
+          signal: controller.signal,
+        });
+        try { data = JSON.parse(await boundedText(response, MAX_RESPONSE_BYTES)); }
+        catch { data = undefined; }
+        if (![500, 503].includes(response.status) || attempt >= retryDelaysMs.length) break;
+        await pause(retryDelaysMs[attempt], controller.signal);
+        if (controller.signal.aborted) break;
+      }
+      if (controller.signal.aborted) return send(request.signal.aborted ? 499 : 504, { error: request.signal.aborted ? "cancelled" : "upstream" });
+      if ([500, 503].includes(response.status)) return send(503, { error: "busy" }, { "Retry-After": "30" });
+      if (data === undefined) return send(502, { error: "upstream" });
       if (response.status === 429) {
         const facts = quotaFacts(data);
         return send(facts.error === "unavailable" ? 503 : 429, facts, facts.retryAfterSeconds ? { "Retry-After": String(facts.retryAfterSeconds) } : {});

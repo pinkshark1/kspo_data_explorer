@@ -536,6 +536,7 @@ async function checkSharedBrowser(browser, base) {
     ["네트워크", { abort: true }, "정상 응답"],
     ["일반429", { status: 429, body: { error: "internal-secret-marker" } }, "정상 응답"],
     ["혼잡429", { status: 429, body: { error: "busy" } }, "혼잡"],
+    ["Google과부하503", { status: 503, body: { error: "busy" } }, "혼잡"],
     ["잘못된 quota", { status: 429, body: { error: "shared_quota", quota: "invalid" } }, "정상 응답"],
     ["한도코드503", { status: 503, body: { error: "shared_quota", quota: "daily" } }, "정상 응답"],
     ["응답형식", { raw: "internal-secret-marker" }, "정상 응답"],

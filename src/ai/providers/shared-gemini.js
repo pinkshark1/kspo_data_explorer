@@ -42,7 +42,7 @@ export async function askSharedGemini({ url, question, candidates, verificationT
       if (Number.isFinite(data.retryAfterSeconds) && data.retryAfterSeconds > 0) error.retryAfterSeconds = Math.min(Math.ceil(data.retryAfterSeconds), 86400);
       throw error;
     }
-    if (response.status === 429 && data?.error === "busy") throw new AiError("shared_busy", "공용 무료 AI 서비스가 혼잡합니다. 잠시 후 다시 시도해 주세요.");
+    if ((response.status === 429 || response.status === 503) && data?.error === "busy") throw new AiError("shared_busy", "공용 무료 AI 서비스가 혼잡합니다. 잠시 후 다시 시도해 주세요.");
     if (response.status === 403 && data?.error === "verification_failed") throw new AiError("shared_verification", "공용 무료 AI 이용 확인이 유효하지 않거나 만료되었습니다. 다시 시도해 주세요.");
     if (response.status !== 200 || typeof data?.summary !== "string" || !Array.isArray(data.recommendations) || !Array.isArray(data.combinations)) throw new AiError("shared_service", SERVICE_ERROR);
     return JSON.stringify(data);

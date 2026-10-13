@@ -42,6 +42,8 @@
 
 공용 서버 구현은 `server/shared-ai-worker.js`, Cloudflare 설정은 `server/wrangler.toml`입니다. 화면 배포 방식은 유지하고 이 중계만 별도로 배포합니다. 입력은 `{ question, candidates, verificationToken }`, 성공 응답은 기존 추천 JSON입니다. 서버는 매번 방문자 토큰을 검증하고 발급 호스트·작업명까지 확인한 뒤 Google을 호출합니다. 토큰은 한 번만 사용하며 Google에 보내지 않습니다. 한도 응답은 HTTP 429와 `{ error: "shared_quota", quota: "daily" | "minute" | "unknown", retryAfterSeconds?: number }`입니다. 한도가 0인 사용 불가 모델·프로젝트는 서비스 오류로 처리합니다.
 
+Google이 일시 과부하로 500·503(`UNAVAILABLE`, “This model is currently experiencing high demand”)을 돌려주면 서버가 1초·2.5초 뒤 같은 요청을 최대 2번 더 보냅니다(방문자 확인은 다시 하지 않음). 그래도 실패하면 HTTP 503과 `{ error: "busy" }`를 돌려주고, 화면은 한도 소진이 아닌 ‘혼잡’으로 안내하며 기본 검색 결과를 보여 줍니다. 한도 소진(429)은 다시 보내지 않습니다. 2026-10-13 공개 화면 점검에서 이 503이 한도와 무관하게 간헐적으로(약 0.3초 만에) 발생하는 것을 확인했습니다.
+
 공용 키에는 **결제가 연결되지 않은 Free 프로젝트**를 사용합니다. 유료 프로젝트의 API 키는 무료 호출량 이후에만 과금되는 키가 아닙니다. 키가 속한 프로젝트의 등급을 AI Studio에서 확인한 뒤 서버 설정을 켜야 합니다. `GEMINI_FREE_TIER_CONFIRMED=true`는 운영자의 확인 표시이며 Google 결제 상태를 자동 조회하거나 과금을 차단하는 기능은 아닙니다. 이후에도 해당 프로젝트에 결제를 연결하지 않습니다. [Google 결제 안내](https://ai.google.dev/gemini-api/docs/billing)
 
 한도는 API 키별이 아니라 **프로젝트별 RPM·입력 TPM·RPD**로 적용합니다. 실제 수치는 [AI Studio 비율 제한](https://aistudio.google.com/rate-limit)에서 확인합니다. 일일 한도는 미국 태평양 시간 자정에 갱신되며 한국 시간으로 고정된 자정이 아닙니다. 한도 수치를 화면 코드에 고정하지 않고 실제 오류를 기준으로 안내합니다. [Google 한도 안내](https://ai.google.dev/gemini-api/docs/rate-limits)
