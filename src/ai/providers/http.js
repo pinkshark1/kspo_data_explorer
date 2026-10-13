@@ -29,6 +29,7 @@ export function pause(ms, signal) {
  * @param {string} options.service 이용자에게 보여줄 서비스 이름 (예: "Gemini")
  */
 export async function postJson({ url, headers, body, signal, service }) {
+  if (signal?.aborted) throw new AiError("cancelled", "요청을 취소했습니다.");
   // 이용자가 취소했거나 시간이 지나면 요청을 끊는다. (AbortSignal.any 는 구형 브라우저에 없어 직접 연결)
   const controller = new AbortController();
   let timedOut = false;
@@ -70,8 +71,7 @@ export function httpError(status, { service, model }) {
   return new AiError("server", `${service} 서비스 오류입니다. (${status})`);
 }
 
-// 400 오류 본문에서 보여줄 만한 설명을 꺼낸다. 길이를 제한한다.
-export function badRequestError(data, service) {
-  const detail = String(data?.error?.message ?? "").replace(/\s+/g, " ").slice(0, 120);
-  return new AiError("server", `${service} 서비스가 요청을 거절했습니다.${detail ? ` (${detail})` : ""}`);
+// 외부 오류 본문에는 요청 값이나 인증정보가 되비칠 수 있으므로 화면에 전달하지 않는다.
+export function badRequestError(_data, service) {
+  return new AiError("server", `${service} 서비스가 요청을 거절했습니다. 질문이나 모델 설정을 확인해 주세요.`);
 }

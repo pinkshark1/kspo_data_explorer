@@ -297,6 +297,7 @@ const GEMINI = {
     ["응답이 도중에 끊김(MAX_TOKENS)", { status: 200, finishReason: "MAX_TOKENS", answer: () => '{"summary":"잘' }, "도중에 끊겼습니다"],
     ["형식 오류", { status: 200, answer: () => "JSON 이 아닌 답변" }, "형식이 올바르지 않"],
     ["요청 거절(400, 재시도해도 거절)", { status: 400, error: { error: { code: 400, message: "invalid argument", status: "INVALID_ARGUMENT" } } }, "요청을 거절"],
+    ["오류 본문에 키가 포함된 응답", { status: 400, error: { error: { code: 400, message: "credential echo: AIzaSyTestGeminiKey-1234567890 internal-secret-marker", status: "INVALID_ARGUMENT" } } }, "요청을 거절"],
   ],
 };
 
@@ -461,7 +462,7 @@ async function checkBrowser() {
       await page.waitForSelector(".ask-result .ask-error[role=alert]", { timeout: 20000 });
       const message = await page.locator(".ask-result .ask-error").innerText();
       const fallbackItems = await page.locator(".ask-list .ask-item").count();
-      check(`[브라우저] ${caseLabel}: 안내 문구 + 기본 검색 결과로 대체`, message.includes(expected) && fallbackItems > 0 && (message.match(/기본 검색 결과/g) ?? []).length === 1 && !message.includes(GEMINI.key), message.slice(0, 60));
+      check(`[브라우저] ${caseLabel}: 안내 문구 + 기본 검색 결과로 대체`, message.includes(expected) && fallbackItems > 0 && (message.match(/기본 검색 결과/g) ?? []).length === 1 && !message.includes(GEMINI.key) && !message.includes("internal-secret-marker"), message.slice(0, 60));
       // 키가 잘못된 경우는 다시 시도해도 소용없으므로 한 번만 보낸다
       if (/잘못된 키|권한 없음/.test(caseLabel)) check(`[브라우저] ${caseLabel}: 같은 요청을 되풀이하지 않는다`, calls.length === 1, `요청 ${calls.length}회`);
       if (/일시 오류/.test(caseLabel)) check(`[브라우저] ${caseLabel}: 한 번만 다시 보내고 멈춘다`, calls.length === 2, `요청 ${calls.length}회`);

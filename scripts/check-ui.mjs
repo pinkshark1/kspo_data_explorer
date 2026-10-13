@@ -64,6 +64,8 @@ try {
   check("업데이트 주기 필터에 영문/한글 중복 표기가 없다", !cycleOptions.some((text) => /Yearly|Monthly|연간/.test(text)) && new Set(cycleOptions.map((text) => text.replace(/\s*\(\d+\)/, ""))).size === cycleOptions.length, cycleOptions.join(" / "));
 
   await desktop.fill(".global-search input", "체력");
+  const selectedTitle = await desktop.locator(".dataset-list button.active b").innerText();
+  check("검색어를 바꾸면 목록의 선택 항목과 상세 제목이 일치한다", (await desktop.locator(".profile-header h1").innerText()) === selectedTitle);
   await desktop.press(".global-search input", "Enter");
   await desktop.waitForTimeout(300);
   const fitnessCount = await desktop.locator(".dataset-list button").count();
@@ -71,9 +73,14 @@ try {
   await desktop.fill(".global-search input", "zzzz없는단어");
   await desktop.waitForTimeout(200);
   check("검색 결과가 없으면 안내 문구가 나온다", (await desktop.locator(".empty-list").count()) === 1);
+  check("검색 결과가 없으면 이전 데이터 상세와 원문 링크를 숨긴다", (await desktop.locator(".profile-header, .profile .request-button").count()) === 0);
   check("검색 결과가 없으면 검색어를 보여 주고 질문 검색·지우기 버튼을 준다", (await desktop.locator(".empty-list").innerText()).includes("zzzz없는단어") && (await desktop.locator(".empty-list button").count()) === 2 && (await desktop.locator(".query-chip").count()) === 1);
   await desktop.locator(".empty-list button", { hasText: "지우기" }).click();
   check("‘조건·검색어 지우기’를 누르면 검색어까지 지워진다", (await desktop.inputValue(".global-search input")) === "" && (await desktop.locator(".dataset-list button").count()) > 100);
+  await desktop.locator(".filter-fields select").nth(2).selectOption("API");
+  check("데이터 유형을 바꾸면 조건에 맞는 상세가 바로 열린다", (await desktop.locator(".dataset-list button.active").count()) === 1 && (await desktop.locator(".profile-tabs button", { hasText: "API 기능" }).count()) === 1);
+  await desktop.getByRole("button", { name: "조건 초기화", exact: true }).click();
+  await desktop.locator(".dataset-list button").first().click();
 
   // 첫 화면 소개: 질문을 입력하면 질문 검색으로 넘어가 바로 찾는다
   check("첫 화면에 서비스 소개와 질문 입력이 있다", (await desktop.locator(".home-intro h2").count()) === 1 && (await desktop.locator("#home-question").count()) === 1);
@@ -92,6 +99,12 @@ try {
   await withMeta.click();
   const metaText = await desktop.locator(".meta-strip").innerText();
   check("‘데이터 정보’에 포털 수정일·이용허락범위가 표시된다", /포털 최종 수정일/.test(metaText) && /이용허락범위/.test(metaText), metaText.replace(/\s+/g, " ").slice(0, 80));
+
+  await desktop.fill(".global-search input", "한국스포츠과학원 연구자료 정기간행물");
+  await desktop.locator(".profile-tabs button", { hasText: "연관 데이터" }).click();
+  const relatedName = await desktop.locator(".related-grid button b").first().innerText();
+  await desktop.locator(".related-grid button").first().click();
+  check("검색 조건 밖의 연관 데이터를 열어도 목록과 상세가 함께 바뀐다", (await desktop.inputValue(".global-search input")) === "" && (await desktop.locator(".profile-header h1").innerText()) === relatedName && (await desktop.locator(".dataset-list button.active b").innerText()) === relatedName);
 
   // 원문 주소가 없는 데이터: 지금은 모든 데이터에 주소가 있으므로, 시험용으로 #6 의 주소(payloads[1])를 지운 데이터 파일을 내려주고 대체 안내를 확인한다.
   const noUrl = await browser.newPage({ viewport: { width: 1440, height: 900 }, locale: "ko-KR" });

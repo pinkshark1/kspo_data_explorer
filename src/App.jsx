@@ -42,14 +42,28 @@ export default function App({ data }) {
     () => filterDatasets(datasets, { query, ...filters, onlyNos: ideaFilter?.nos ?? null }),
     [datasets, query, filters, ideaFilter],
   );
-  const related = useMemo(() => relatedDatasets(datasets, selected), [datasets, selected]);
-  const detail = resolveDetail(selected, data, operationPath);
-  const infoRows = portalInfoRows(selected, data.portalMeta, site);
+  const related = useMemo(() => selected ? relatedDatasets(datasets, selected) : [], [datasets, selected]);
+  const detail = selected ? resolveDetail(selected, data, operationPath) : null;
+  const infoRows = selected ? portalInfoRows(selected, data.portalMeta, site) : [];
+
+  // 검색 조건과 선택 항목을 함께 갱신해 목록 밖의 상세가 남지 않게 한다.
+  const updateSearch = (nextQuery, nextFilters, nextIdeaFilter) => {
+    const nextResults = filterDatasets(datasets, { query: nextQuery, ...nextFilters, onlyNos: nextIdeaFilter?.nos ?? null });
+    const nextSelected = nextResults.find((item) => item.no === selected?.no) ?? nextResults[0] ?? null;
+    setQuery(nextQuery);
+    setFilters(nextFilters);
+    setIdeaFilter(nextIdeaFilter);
+    setSelected(nextSelected);
+    if (nextSelected?.no !== selected?.no) {
+      setTab("summary");
+      setOperationPath("");
+    }
+  };
 
   // 목록에서 데이터를 고르면 상세를 보여준다. 위아래로 쌓인 좁은 화면에서는 상세 위치로, 넓은 화면에서는 맨 위로 이동.
   const selectDataset = (dataset) => {
-    // 관계도·연계 아이디어 등 다른 화면에서 열 때, 예전 검색어·필터 때문에 목록에 없는 데이터라면 조건을 풀어 목록과 상세가 맞게 한다.
-    if (view !== "explorer" && !results.some((item) => item.no === dataset.no)) {
+    // 연관 데이터·관계도·연계 아이디어에서 목록 밖의 데이터를 열면 조건을 풀어 목록과 상세가 맞게 한다.
+    if (!results.some((item) => item.no === dataset.no)) {
       setFilters(INITIAL_FILTERS);
       setQuery("");
       setIdeaFilter(null);
@@ -66,7 +80,7 @@ export default function App({ data }) {
   };
 
   const changeQuery = (value) => {
-    setQuery(value);
+    updateSearch(value, filters, ideaFilter);
     setView("explorer");
   };
 
@@ -76,6 +90,7 @@ export default function App({ data }) {
     if (query.trim() && results[0]) {
       setSelected(results[0]);
       setTab("summary");
+      setOperationPath("");
     }
     requestAnimationFrame(() => {
       document.getElementById("main-content")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -84,9 +99,7 @@ export default function App({ data }) {
 
   // 조건 초기화: 필터와 함께 검색어도 지운다.
   const resetFilters = () => {
-    setFilters(INITIAL_FILTERS);
-    setQuery("");
-    setIdeaFilter(null);
+    updateSearch("", INITIAL_FILTERS, null);
   };
 
   // 첫 화면의 질문 입력: 질문 검색 화면으로 옮겨 바로 찾는다.
@@ -98,13 +111,13 @@ export default function App({ data }) {
 
   // 안내띠의 "전체 데이터 보기"를 누르면 그 버튼이 사라지므로, 키보드 초점을 조건 영역으로 옮긴다.
   const clearIdeaFilter = () => {
-    setIdeaFilter(null);
+    updateSearch(query, filters, null);
     requestAnimationFrame(() => document.querySelector(".explorer-controls select")?.focus());
   };
 
   // 로고(데이터 탐색 홈)를 누르면 연계 아이디어 필터는 풀고 탐색 화면으로 돌아간다.
   const goHome = () => {
-    setIdeaFilter(null);
+    updateSearch(query, filters, null);
     setView("explorer");
   };
 
@@ -140,13 +153,13 @@ export default function App({ data }) {
           exampleQuestions={site.ai?.exampleQuestions ?? []}
           onAsk={askFromHome}
           query={query}
-          onClearQuery={() => setQuery("")}
+          onClearQuery={() => updateSearch("", filters, ideaFilter)}
           totalCount={datasets.length}
           categories={categories}
           cycleOptions={cycleOptions}
           filters={filters}
           ideaFilter={ideaFilter}
-          onChangeFilter={(name, value) => setFilters((current) => ({ ...current, [name]: value }))}
+          onChangeFilter={(name, value) => updateSearch(query, { ...filters, [name]: value }, ideaFilter)}
           onResetFilters={resetFilters}
           onClearIdeaFilter={clearIdeaFilter}
           results={results}
@@ -155,7 +168,7 @@ export default function App({ data }) {
           related={related}
           tab={tab}
           portals={site.portals}
-          portalInfo={site.portals[portalOf(selected)]}
+          portalInfo={selected ? site.portals[portalOf(selected)] : null}
           orgCallName={site.organization.callName || site.organization.name}
           infoRows={infoRows}
           metaFetchedAt={data.portalMetaFetchedAt}

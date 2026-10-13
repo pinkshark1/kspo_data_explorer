@@ -78,7 +78,7 @@ export default function ExplorerView({
     if (!list || !active) return;
     const top = active.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop; // 목록 상자 안에서의 위치
     if (top < list.scrollTop || top > list.scrollTop + list.clientHeight - active.offsetHeight) list.scrollTop = top - 8;
-  }, [selected.no]);
+  }, [selected?.no]);
 
   return (
     <div className="explorer-shell" id="main-content">
@@ -147,7 +147,7 @@ export default function ExplorerView({
               </button>
             </span>
           )}
-          <span>
+          <span role="status" aria-live="polite" aria-atomic="true">
             <b>{results.length}</b>건 검색됨
           </span>
           <button type="button" onClick={onResetFilters}>
@@ -168,7 +168,7 @@ export default function ExplorerView({
                 results.map((dataset) => {
                   const portal = portalOf(dataset);
                   return (
-                    <button key={dataset.no} className={selected.no === dataset.no ? "active" : ""} onClick={() => onSelectDataset(dataset)}>
+                    <button key={dataset.no} className={selected?.no === dataset.no ? "active" : ""} aria-current={selected?.no === dataset.no ? "true" : undefined} onClick={() => onSelectDataset(dataset)}>
                       <span className="table-icon">▦</span>
                       <span>
                         <b>{dataset.name}</b>
@@ -202,19 +202,26 @@ export default function ExplorerView({
           </section>
         </aside>
 
-        <DatasetProfile
-          dataset={selected}
-          detail={detail}
-          related={related}
-          tab={tab}
-          portalInfo={portalInfo}
-          orgCallName={orgCallName}
-          infoRows={infoRows}
-          metaFetchedAt={metaFetchedAt}
-          onChangeTab={onChangeTab}
-          onSelectDataset={onSelectDataset}
-          onChangeOperation={onChangeOperation}
-        />
+        {selected ? (
+          <DatasetProfile
+            dataset={selected}
+            detail={detail}
+            related={related}
+            tab={tab}
+            portalInfo={portalInfo}
+            orgCallName={orgCallName}
+            infoRows={infoRows}
+            metaFetchedAt={metaFetchedAt}
+            onChangeTab={onChangeTab}
+            onSelectDataset={onSelectDataset}
+            onChangeOperation={onChangeOperation}
+          />
+        ) : (
+          <section className="profile metadata-empty" aria-label="데이터 상세">
+            <h2>조건에 맞는 데이터가 없습니다.</h2>
+            <p>검색어나 조건을 바꾸면 해당 데이터의 상세 정보를 확인할 수 있습니다.</p>
+          </section>
+        )}
       </div>
     </div>
   );

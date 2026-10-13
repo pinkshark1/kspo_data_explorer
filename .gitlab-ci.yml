@@ -20,6 +20,12 @@ sync-to-github:
     - |
       $ErrorActionPreference = "Stop"
 
+      # 공개 미러에 보내기 전에 추적 파일과 배포 폴더를 검사한다. Node.js 20 이상 필요.
+      node scripts/check-security.mjs
+      if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+      }
+
       Write-Host "Syncing GitLab main -> GitHub main"
 
       $pair = "pinkshark1:$env:GITHUB_PAT"
