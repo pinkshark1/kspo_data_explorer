@@ -62,5 +62,5 @@ node scripts/fetch-portal-metadata.mjs --data examples/korea-sports-council/data
 ## 참고: 외부에서 가져다 쓰는 것
 
 - 오픈소스: React 19 (MIT), Pretendard 글꼴 (SIL OFL) — 라이선스 고지는 `assets/THIRD_PARTY_NOTICES.txt` 에 있으며 `npm run notices` 로 다시 만들 수 있습니다.
-- 기본 탐색(검색·필터·상세·관계도·질문 검색의 기본 검색)은 브라우저에서 처리하며 외부 서버를 호출하지 않습니다. 질문 검색에서 **AI 추천을 고른 경우에만** 이용자가 넣은 키로 외부 모델 API(Google Gemini API)를 호출합니다. ([AI_FEATURE.md](AI_FEATURE.md)) AI 추천을 쓰지 않을 기관은 `site.json` 의 `ai.modes` 를 `["local"]` 로 둡니다.
+- 기본 탐색(검색·필터·상세·관계도·질문 검색의 기본 검색)은 브라우저에서 처리하며 외부 서버를 호출하지 않습니다. 질문 검색에서 **AI 추천으로 질문을 보낼 때만** 외부를 호출합니다. 공용 무료 중계(`ai.gemini.shared.url`)를 설정하면 이용 확인(Cloudflare Turnstile)과 그 중계 서버를 거쳐 Google Gemini API를 부르고, 설정하지 않았거나 이용자가 ‘내 키’를 고르면 이용자 키로 Google Gemini API를 직접 부릅니다. ([AI_FEATURE.md](AI_FEATURE.md)) KSPO의 공용 중계 주소와 Turnstile 사이트 키는 KSPO 화면 주소에서만 동작하므로 그대로 복사하지 말고, 기관이 직접 중계 서버를 배포하거나([DEPLOYMENT.md](../DEPLOYMENT.md) ‘공용 무료 AI 연결’) `shared`를 빼서 본인 키 방식으로 둡니다. AI 추천을 쓰지 않을 기관은 `site.json` 의 `ai.modes` 를 `["local"]` 로 둡니다.
 - 화면에서 포털로 이동하는 링크는 이용자가 눌렀을 때만 새 창으로 열립니다.

@@ -34,6 +34,8 @@ KSPO 데이터 지도의 기본 탐색은 서버 프로그램·데이터베이�
 npm install     # 처음 한 번 (Node.js 20 이상)
 npm run build   # src/ → assets/app.js, assets/app.css
 npm run check:data && npm run check:ui    # 반영 전 점검
+npm run check:search && npm run check:ai  # 질문 검색·AI 경로(모의) 점검
+npm run check:shared-ai                   # 공용 무료 AI 중계를 고친 경우
 npm run check:security && npm run check:http    # 공개 범위·인증정보·HTTP 처리 점검
 ```
 
@@ -50,10 +52,11 @@ npm run check:security && npm run check:http    # 공개 범위·인증정보·H
 
 1. Google AI Studio에서 공용 키가 속한 프로젝트가 **Free 등급**이고 결제가 연결되지 않았는지 확인합니다. 키는 채팅·소스·`site.json`에 넣지 않습니다.
 2. Cloudflare의 무료 Turnstile 위젯을 만들고 실제 화면의 호스트 이름을 등록합니다. 위젯 유형은 **Managed**, Pre-clearance는 끔으로 설정합니다. 공개 사이트 키는 화면 설정에, Secret 키는 Worker의 `TURNSTILE_SECRET_KEY`에 사용합니다. 두 키를 혼동하지 않습니다.
-3. Cloudflare Workers 무료 요금제에서 `server/wrangler.toml`과 `server/shared-ai-worker.js`를 배포합니다. 런타임 Secret `GEMINI_API_KEY`에 공용 Gemini 키, `TURNSTILE_SECRET_KEY`에 방문자 검증 Secret을 등록하고, `AI_ALLOWED_ORIGINS`에 실제 화면의 Origin(경로 없이)을 지정합니다. `GEMINI_FREE_TIER_CONFIRMED`는 Free 확인 후에만 `true`로 설정합니다. 이 값으로 Google의 결제 설정이 변경되는 것은 아닙니다.
+3. Cloudflare Workers 무료 요금제에서 `server/wrangler.toml`과 `server/shared-ai-worker.js`를 배포합니다. 런타임 Secret `GEMINI_API_KEY`에 공용 Gemini 키, `TURNSTILE_SECRET_KEY`에 이용 확인(Turnstile) Secret을 등록하고, `AI_ALLOWED_ORIGINS`에 실제 화면의 Origin(경로 없이)을 지정합니다. `GEMINI_FREE_TIER_CONFIRMED`는 Free 확인 후에만 `true`로 설정합니다. 이 값으로 Google의 결제 설정이 변경되는 것은 아닙니다.
 4. Wrangler 4.36 이상을 사용하는 경우 `npx wrangler deploy --config server/wrangler.toml --var AI_ALLOWED_ORIGINS:https://실제-화면-도메인 --var GEMINI_FREE_TIER_CONFIRMED:true`로 배포합니다. `npx wrangler secret put GEMINI_API_KEY --config server/wrangler.toml`과 `npx wrangler secret put TURNSTILE_SECRET_KEY --config server/wrangler.toml`의 입력 프롬프트에서 각 Secret을 등록합니다. Secret을 명령줄 인자로 넣지 않습니다. 재배포 시에도 Origin·확인값을 지정해야 합니다. 미설정 상태에서는 서버가 외부 AI를 호출하지 않습니다.
-5. 실제 `/healthz`를 확인한 뒤 검수용 화면의 `data/site.json`에서 `ai.gemini.shared.url`에 HTTPS `/recommend` 주소, `ai.gemini.shared.turnstileSiteKey`에 공개 사이트 키를 넣고 `ai.defaultMode`를 `gemini`로 변경합니다. 등록한 호스트에서 방문자 검증과 실제 추천을 확인한 뒤 운영 설정에 반영합니다. url이 비어 있으면 공용 기능을 켜지 않습니다. CSP가 있다면 아래 안내에 따라 중계 주소와 Turnstile을 허용합니다.
+5. 실제 `/healthz`를 확인한 뒤 검수용 화면의 `data/site.json`에서 `ai.gemini.shared.url`에 HTTPS `/recommend` 주소, `ai.gemini.shared.turnstileSiteKey`에 공개 사이트 키를 넣고 `ai.defaultMode`를 `gemini`로 변경합니다. 등록한 호스트에서 이용 확인과 실제 추천을 확인한 뒤 운영 설정에 반영합니다. url이 비어 있으면 공용 기능을 켜지 않습니다. CSP가 있다면 아래 안내에 따라 중계 주소와 Turnstile을 허용합니다. (현재 운영 화면은 2026-10-13에 이 절차로 연결했습니다.)
 6. `npm run build`, `npm run check:data`, `npm run check:ui`, `npm run check:search`, `npm run check:ai`, `npm run check:shared-ai`, `npm run check:security`를 실행하고 화면을 반영합니다. 실제 무료 한도를 고의로 소진하지 말고 모의 429 응답으로 개인 키 전환을 검증합니다.
+7. `server/shared-ai-worker.js`를 고친 경우(예: 503 재시도 추가) 화면 반영과 별도로 4단계의 `npx wrangler deploy` 명령(Origin·확인값 지정 포함)으로 Worker를 다시 배포하고 `/healthz`와 실제 질문 1건을 확인합니다. GitLab `main` 반영만으로는 Worker가 갱신되지 않습니다.
 
 Cloudflare의 무료 요청·CPU 한도에 들어가는지 확인하고, 무료 요금제를 유지합니다. Worker에서 원문 요청·API 키를 로그에 쓰지 않습니다. `.dev.vars*`와 `.wrangler/`는 로컬 설정으로 Git에서 제외합니다. 자세한 흐름과 한도 구분은 [질문 검색 안내](docs/AI_FEATURE.md#공용-무료-ai--본인-키-전환)를 참고하세요.
 
@@ -74,11 +77,11 @@ HTML이 다운로드되지 않고 화면에 표시되도록 `Content-Disposition
 
 ## 보안 특성
 
-- 자체 실행 코드는 `assets/app.js`이며 HTML 내부 인라인 JavaScript는 없습니다. 공용 무료 AI 요청 시에는 방문자 확인을 위해 Cloudflare Turnstile 스크립트와 프레임을 추가로 불러옵니다.
+- 자체 실행 코드는 `assets/app.js`이며 HTML 내부 인라인 JavaScript는 없습니다. 공용 무료 AI 요청 시에는 이용 확인(Cloudflare Turnstile)을 위해 Turnstile 스크립트와 프레임을 추가로 불러옵니다.
 - 스타일은 `assets/app.css`로 분리되어 있으며 HTML 내부 인라인 스타일 블록은 없습니다.
 - 데이터는 동일 출처의 정적 JSON만 읽습니다.
 - 자체 화면에는 파일 업로드, 로그인, `localStorage` 저장 기능이 없습니다. Turnstile의 Pre-clearance는 사용하지 않습니다. (화면의 ‘데이터 원문’·포털 링크는 사용자가 누를 때만 새 창으로 열립니다.)
-- **외부 호출은 ‘질문 검색’의 AI 방식에서 이용자가 질문을 보낼 때** 시작합니다. 기본 검색과 저장된 예시는 외부 요청이 없습니다. 호출 대상은 `ai.gemini.shared.url`의 공용 무료 중계 및 `challenges.cloudflare.com`(방문자 확인), `generativelanguage.googleapis.com`(이용자 본인 키) 또는 별도로 설정한 기관 AI 서버입니다. 자세한 내용과 보안 특성은 [docs/AI_FEATURE.md](docs/AI_FEATURE.md).
+- **외부 호출은 ‘질문 검색’의 AI 방식에서 이용자가 질문을 보낼 때** 시작합니다. 기본 검색과 저장된 예시는 외부 요청이 없습니다. 호출 대상은 `ai.gemini.shared.url`의 공용 무료 중계 및 `challenges.cloudflare.com`(이용 확인), `generativelanguage.googleapis.com`(이용자 본인 키) 또는 별도로 설정한 기관 AI 서버입니다. 자세한 내용과 보안 특성은 [docs/AI_FEATURE.md](docs/AI_FEATURE.md).
 - 글꼴·영상·이미지는 모두 `assets/` 의 자체 파일이며 외부 CDN을 쓰지 않습니다.
 - API 키는 소스·데이터 파일·저장소에 두지 않습니다. 이용자가 입력한 키는 브라우저 메모리에서만 쓰이고, 서버 방식의 키는 중계 서버 환경변수에만 둡니다.
 - `data/site.json`은 누구나 읽을 수 있는 화면 설정입니다. 환경변수 파일을 대신하는 비밀 저장소로 사용하지 않습니다.
@@ -104,7 +107,8 @@ Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'
 - 데이터셋 상세정보, 컬럼 정의, 샘플 데이터, ‘데이터 정보’(포털 수정일·이용허락범위)가 표시되는지
 - 관계도 노드 선택, 확대·축소(휠·버튼·두 손가락), 이동이 동작하는지
 - ‘사용방법’ 화면에서 영상이 재생되는지
-- ‘질문 검색’에서 예시 질문이 결과를 내는지, (AI 방식을 켠 경우) 실제 키·서버로 질문해 응답과 비용을 확인했는지
+- ‘질문 검색’에서 예시 질문이 결과를 내는지(저장된 AI 예시는 외부 요청 없이)
+- (공용 무료 AI를 켠 경우) 키 없이 새 질문에 이용 확인이 통과하고 추천이 나오는지, Worker `/healthz`가 정상인지, 한도·혼잡 안내와 ‘내 키로 계속하기’·기본 검색 전환이 동작하는지(한도는 모의 응답으로 확인), 공용 키 프로젝트에 결제가 연결되지 않았는지
 - 모바일(폭 360~390px)에서 상단 메뉴가 잘리지 않고 가로 스크롤이 생기지 않는지
 - 개발자 도구에 404, JSON 파싱 오류, CSP 차단 오류가 없는지
 - `data/explorer-data.json`이 외부에서 직접 조회 가능한 공개 데이터 범위인지, 관계도에 나오는 정보시스템 이름이 공개 범위에 맞는지

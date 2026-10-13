@@ -1,5 +1,5 @@
 // 실제 키로 받은 AI 추천 응답(docs/evidence/*-ai-compare.json)을 화면용 예시 파일(data/ai-examples.json)로 옮긴다.   npm run export:ai-examples [-- 모델]
-// 화면은 이 파일이 있으면 예시 질문에 대해 키 없이도 ‘저장된 AI 추천 예시’를 보여 준다. (새로 AI 를 부르지 않는다)
+// 화면은 이 파일이 있으면 예시 질문에 대해 AI 호출 없이 ‘저장된 AI 추천 예시’를 보여 준다. (새로 AI 를 부르지 않는다)
 // - 가장 최근 비교 기록에서, 지정한 모델(기본: site.json 의 ai.gemini.model)이 실제로 응답한 질문만 옮긴다. 응답 문장은 고치지 않는다.
 // - 데이터 번호가 현재 목록에 없으면 그 추천은 뺀다.
 import fs from "node:fs";

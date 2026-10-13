@@ -1,5 +1,5 @@
-// 자동 점검 4종을 실행하고 결과를 증빙 파일(docs/evidence/YYYY-MM-DD-checks.md)로 남긴다.   npm run evidence
-//   check:data(데이터·개인정보) · check:search(기본 검색 품질) · check:ui(화면) · check:ai(AI 경로, 모의 서버)
+// 자동 점검 5종을 실행하고 결과를 증빙 파일(docs/evidence/YYYY-MM-DD-checks.md)로 남긴다.   npm run evidence
+//   check:data(데이터·개인정보) · check:search(기본 검색 품질) · check:ui(화면) · check:ai(AI 경로, 모의 서버) · check:shared-ai(공용 무료 AI 중계, 모의 응답)
 // 실행 환경(OS·Node·브라우저)과 저장소 커밋을 함께 적고, 각 점검의 전체 출력을 그대로 붙인다. 실패가 있으면 종료 코드 1.
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -27,6 +27,7 @@ const CHECKS = [
   { id: "check:search", title: "기본 검색 품질", summary: (out) => out.match(/질문 \d+개 \| [^\n]+/)?.[0]?.trim() },
   { id: "check:ui", title: "화면(데스크톱·모바일)", summary: (out) => out.match(/\d+\/\d+ 통과/)?.[0] },
   { id: "check:ai", title: "AI 경로(모의 서버)", summary: (out) => out.match(/\d+\/\d+ 통과/)?.[0] },
+  { id: "check:shared-ai", title: "공용 무료 AI 중계(모의 응답)", summary: (out) => out.match(/\d+\/\d+ 공용 AI 중계 검사 통과/)?.[0] },
 ];
 
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
@@ -53,7 +54,7 @@ const lines = [
   "|---|---|---|---|",
   ...results.map((r) => `| ${r.title} | \`npm run ${r.id}\` | ${r.ok ? "통과" : "**실패**"} | ${r.line.replace(/\s*\|\s*/g, " · ")} |`),
   "",
-  "> 기본 검색 품질의 질문 세트는 개발자가 직접 만든 것이며, 개발 중 회귀를 확인하는 용도입니다. AI 경로 점검은 실제 AI 대신 모의 서버를 씁니다. 실제 키로 확인한 AI 응답은 같은 폴더의 `*-ai-probe.txt`(`npm run probe:ai -- --save`)와 `*-ai-compare.md`(`npm run compare:ai`)를 보세요.",
+  "> 기본 검색 품질의 질문 세트는 개발자가 직접 만든 것이며, 개발 중 회귀를 확인하는 용도입니다. AI 경로·공용 중계 점검은 실제 AI 대신 모의 응답을 씁니다. 공개 화면에서 실제로 호출한 기록은 `*-shared-ai-live.md`를 보세요. 실제 키로 확인한 AI 응답은 같은 폴더의 `*-ai-probe.txt`(`npm run probe:ai -- --save`)와 `*-ai-compare.md`(`npm run compare:ai`)를 보세요.",
   "",
   ...results.flatMap((r) => [`## ${r.title} — \`npm run ${r.id}\` (${r.seconds}초)`, "", "```text", r.output, "```", ""]),
 ];

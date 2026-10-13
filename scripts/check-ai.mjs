@@ -1,8 +1,10 @@
 // 질문 검색의 AI 경로 점검(모의 서버 사용).   npm run build && npm run check:ai
-// 실제 AI 를 호출하지 않는다. Gemini API, Anthropic API(중계 서버가 쓰는 쪽), 기관 AI 서버를 모의 응답으로 대신해, 아래를 확인한다.
-//   1) 중계 서버(scripts/ai-gateway.mjs): 요청 형식, 허용 주소, 입력 검사, 호출·하루·동시 처리 한도, 폴백, 거절, 연결 끊김
+// 실제 AI 를 호출하지 않는다. Gemini API, 공용 무료 AI 중계, Anthropic API(기관 AI 서버 참조 구현이 쓰는 쪽), 기관 AI 서버를 모의 응답으로 대신해, 아래를 확인한다.
+//   1) 기관 AI 서버 참조 구현(scripts/ai-gateway.mjs): 요청 형식, 허용 주소, 입력 검사, 호출·하루·동시 처리 한도, 폴백, 거절, 연결 끊김
 //   2) 브라우저의 Gemini 직접 호출: 헤더·본문 형식(설정된 모델 기준), 결과 표시, 오류별 안내, 키 비저장, 취소·최신 질문 우선
 //   3) 브라우저의 기관 AI 서버 호출: 요청 본문, 결과 표시, 거절 처리
+//   4) 브라우저의 공용 무료 AI 호출: 키 없이 호출, 이용 확인, 한도 종류별 안내, ‘내 키로 계속하기’ 전환, 혼잡·서버 오류 구분, 기본 검색 전환
+//   (중계 서버 자체는 npm run check:shared-ai 가 점검한다)
 //   화면에 보이는 검색 방식은 ‘기본 검색’과 ‘AI 추천 (Gemini)’ 뿐이다. (Claude·GPT 는 화면에서 뺐다)
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -614,7 +616,7 @@ async function checkBrowser() {
       check("[브라우저] Gemini 를 고르면 ‘Gemini API 키’ 입력란과 전송 대상 안내가 나온다", (await page.locator("label[for=ask-api-key]").innerText()) === GEMINI.keyLabel && (await page.locator("#ask-key-help").innerText()).includes(`${GEMINI.host}로 직접`) && (await page.locator(".ask-privacy").innerText()).includes("Google(Gemini)"));
       await page.fill("#ask-question", "체육시설 안전");
       await page.getByRole("button", { name: "질문하기" }).click();
-      check("[브라우저] 키 없이 질문하면 안내가 나오고 호출하지 않으며 초점이 키 입력란으로 간다", (await page.locator("#ask-form-error").innerText()).includes(GEMINI.keyLabel) && calls.length === 0 && (await page.locator("#ask-api-key").evaluate((el) => el === document.activeElement)));
+      check("[브라우저] 내 키 방식에서 키 없이 질문하면 안내가 나오고 호출하지 않으며 초점이 키 입력란으로 간다", (await page.locator("#ask-form-error").innerText()).includes(GEMINI.keyLabel) && calls.length === 0 && (await page.locator("#ask-api-key").evaluate((el) => el === document.activeElement)));
 
       await askGeminiMode(page);
       await page.waitForSelector(".ask-badge");

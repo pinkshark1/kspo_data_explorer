@@ -20,7 +20,7 @@ function modelsOf(config) {
 // 설정(site.json ai.modes)에서 켜진 방식만 보여준다. 기본 검색은 항상 있다.
 function availableModes(ai) {
   const wanted = ai.modes ?? ["local"];
-  const modes = [{ id: "local", label: "기본 검색", hint: "키 없이 누구나 바로 씁니다. 질문 속 낱말과 비슷한 말로 이 브라우저 안에서 찾습니다." }];
+  const modes = [{ id: "local", label: "기본 검색", hint: "AI 없이 이 브라우저 안에서 질문 속 낱말과 비슷한 말로 찾습니다(외부 요청 없음)." }];
   for (const [id, info] of Object.entries(KEY_MODES)) {
     if (wanted.includes(id) && ai[id]) {
       const hint = sharedGeminiUrl(ai[id])
@@ -109,7 +109,7 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
     abortRef.current = null;
   }, []);
 
-  // 저장된 AI 추천 예시: 실제 키로 받은 응답을 data/ai-examples.json 에 둔 것. 예시 질문이면 키 없이 보여 준다. (새로 AI 를 부르지 않음)
+  // 저장된 AI 추천 예시: 실제 키로 받은 응답을 data/ai-examples.json 에 둔 것. 예시 질문이면 AI 호출 없이 보여 준다. (새로 AI 를 부르지 않음)
   const savedExamples = store.aiExamples;
   const exampleFor = (text) => savedExamples?.examples.find((entry) => entry.question === String(text ?? "").trim());
   const byNo = useMemo(() => new Map(store.datasets.map((dataset) => [dataset.no, dataset])), [store]);
@@ -393,7 +393,7 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
         {ai.exampleQuestions?.length > 0 && (
           <div className="ask-examples">
             <span>이런 질문을 해 보세요</span>
-            {savedExamples && <small className="ask-examples-note">예시 질문은 키 없이도 저장된 AI 추천 예시를 볼 수 있습니다.</small>}
+            {savedExamples && <small className="ask-examples-note">예시 질문은 저장해 둔 실제 AI 응답을 바로 보여 줍니다(AI 호출 없음).</small>}
             {ai.exampleQuestions.map((text) => (
               <button type="button" key={text} onClick={() => useExample(text)}>
                 {text}
@@ -450,7 +450,7 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
 
             {!result.usedAi && exampleFor(result.question) && (
               <button type="button" className="ask-saved-open" onClick={() => showSavedExample(result.question)}>
-                같은 질문의 AI 추천 예시 보기 <small>(키 없이 · 저장된 실제 응답)</small>
+                같은 질문의 AI 추천 예시 보기 <small>(AI 호출 없음 · 저장된 실제 응답)</small>
               </button>
             )}
 

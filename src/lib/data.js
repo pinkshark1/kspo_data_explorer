@@ -62,7 +62,7 @@ export async function loadAppData() {
 
   assertSiteConfig(site);
 
-  // 저장된 AI 추천 예시(키 없이 보여 줄 실제 응답). site.json 의 ai.examplesFile 이 있을 때만 읽는다. (없거나 못 읽어도 화면은 동작)
+  // 저장된 AI 추천 예시(AI 호출 없이 보여 줄 실제 응답). site.json 의 ai.examplesFile 이 있을 때만 읽는다. (없거나 못 읽어도 화면은 동작)
   const aiExamples = site.ai?.examplesFile ? await fetchOptionalJson(`../data/${site.ai.examplesFile}`, "AI 추천 예시") : null;
 
   const payloads = explorer?.payloads;
