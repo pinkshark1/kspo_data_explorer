@@ -45,9 +45,22 @@ const watch = (page, label) => {
 };
 const navButton = (page, label) => page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("button", { name: label });
 
+// UI 점검은 운영 AI 기본값과 분리해 기본 검색을 사용하며 실제 외부 서비스를 호출하지 않는다.
+const prepareLocalUi = async (page) => {
+  await page.route("**/*", (route) => new URL(route.request().url()).origin === base ? route.continue() : route.abort("blockedbyclient"));
+  await page.route("**/data/site.json", async (route) => {
+    const response = await route.fetch();
+    const site = await response.json();
+    site.ai.defaultMode = "local";
+    site.ai.gemini.shared = { url: "", turnstileSiteKey: "" };
+    await route.fulfill({ response, json: site });
+  });
+};
+
 try {
   // ---------------- 데스크톱 ----------------
   const desktop = await browser.newPage({ viewport: { width: 1440, height: 900 }, locale: "ko-KR" });
+  await prepareLocalUi(desktop);
   watch(desktop, "desktop");
   const requestedUrls = [];
   desktop.on("request", (request) => requestedUrls.push(request.url()));
@@ -108,6 +121,7 @@ try {
 
   // 원문 주소가 없는 데이터: 지금은 모든 데이터에 주소가 있으므로, 시험용으로 #6 의 주소(payloads[1])를 지운 데이터 파일을 내려주고 대체 안내를 확인한다.
   const noUrl = await browser.newPage({ viewport: { width: 1440, height: 900 }, locale: "ko-KR" });
+  await prepareLocalUi(noUrl);
   watch(noUrl, "no-url");
   await noUrl.route(/\/data\/explorer-data\.json/, async (route) => {
     const response = await route.fetch();
@@ -174,6 +188,7 @@ try {
   // 질문 검색(기본 검색: AI 호출 없음)
   await navButton(desktop, "질문 검색").click();
   await desktop.waitForSelector(".ask-form");
+  await desktop.locator('input[value="local"]').check();
   await desktop.locator(".ask-examples button").first().click();
   await desktop.waitForSelector(".ask-list .ask-item");
   const askCount = await desktop.locator(".ask-list .ask-item").count();
@@ -217,6 +232,7 @@ try {
   for (const width of [390, 360]) {
     const context = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: "ko-KR" });
     const mobile = await context.newPage();
+    await prepareLocalUi(mobile);
     watch(mobile, `mobile${width}`);
     await mobile.goto(`${base}/`, { waitUntil: "networkidle" });
     await mobile.waitForSelector(".dataset-list button");

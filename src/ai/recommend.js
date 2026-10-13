@@ -5,6 +5,7 @@ import { AiError } from "./errors.js";
 import { LIMITS, buildSystemPrompt, buildUserMessage, parseAiResponse, summarizeCandidate } from "./prompt.js";
 import { askGateway } from "./providers/gateway.js";
 import { askGemini } from "./providers/gemini.js";
+import { askSharedGemini, sharedGeminiUrl } from "./providers/shared-gemini.js";
 import { search } from "./retrieval.js";
 
 // 이용자 본인의 API 키로 브라우저에서 직접 부르는 방식. 설정은 site.json 의 ai.<방식> 에 있다.
@@ -48,9 +49,11 @@ export function selectCandidates(index, store, question) {
  * @param {object} args.index   buildIndex() 결과
  * @param {string} [args.apiKey] gemini 모드에서 이용자가 입력한 키
  * @param {string} [args.model]  gemini 모드에서 이용자가 고른 모델. site.json 의 ai.gemini.models 에 있는 것만 쓰고, 없으면 기본 모델을 쓴다.
+ * @param {boolean} [args.usePersonalKey] 공용 AI 설정이 있을 때 이용자가 명시적으로 개인 키 사용을 선택했는지
+ * @param {string} [args.verificationToken] 이번 공용 요청에만 쓰는 이용 확인 토큰
  * @param {AbortSignal} [args.signal]
  */
-export async function recommend({ question, mode, store, index, apiKey, model, signal }) {
+export async function recommend({ question, mode, store, index, apiKey, model, usePersonalKey = false, verificationToken, signal }) {
   const trimmed = question.trim().slice(0, LIMITS.questionChars);
   const aiConfig = store.site.ai ?? {};
   const found = search(index, trimmed, { limit: 12 });
@@ -75,6 +78,8 @@ export async function recommend({ question, mode, store, index, apiKey, model, s
     candidateCount: 0,
     strategy: "local",
     error: null,
+    errorCode: null,
+    aiSource: null,
   };
   if (mode === "local" || !trimmed) return result;
 
@@ -84,10 +89,17 @@ export async function recommend({ question, mode, store, index, apiKey, model, s
     result.strategy = strategy;
 
     let text;
-    if (Object.hasOwn(KEY_PROVIDERS, mode) && aiConfig[mode]) {
+    const sharedUrl = mode === "gemini" ? sharedGeminiUrl(aiConfig.gemini) : "";
+    if (sharedUrl && !usePersonalKey) {
+      result.aiSource = "shared";
+      if (typeof aiConfig.gemini.shared.turnstileSiteKey !== "string" || !aiConfig.gemini.shared.turnstileSiteKey.trim()) throw new AiError("shared_config", "공용 무료 AI 이용 확인 설정이 준비되지 않았습니다. 기본 검색을 이용해 주세요.");
+      text = await askSharedGemini({ url: sharedUrl, question: trimmed, candidates, verificationToken, signal });
+    } else if (Object.hasOwn(KEY_PROVIDERS, mode) && aiConfig[mode]) {
+      result.aiSource = "personal";
       const system = buildSystemPrompt({ orgName: store.site.organization.name, serviceName: store.site.service.fullName });
       text = await KEY_PROVIDERS[mode]({ apiKey, config: configFor(aiConfig[mode], model), system, userMessage: buildUserMessage(trimmed, candidates), signal });
     } else if (mode === "gateway") {
+      result.aiSource = "gateway";
       text = await askGateway({ url: aiConfig.gateway.url, question: trimmed, candidates, signal });
     } else {
       throw new AiError("server", "지원하지 않는 모드입니다.");
@@ -105,6 +117,8 @@ export async function recommend({ question, mode, store, index, apiKey, model, s
   } catch (error) {
     if (signal?.aborted || (error instanceof AiError && error.code === "cancelled")) throw new AiError("cancelled", "요청을 취소했습니다.");
     result.error = error instanceof AiError ? error.message : "AI 추천 중 오류가 발생했습니다.";
+    result.errorCode = error instanceof AiError ? error.code : "server";
+    if (error instanceof AiError && error.code === "shared_quota") result.sharedQuota = { quota: error.quota, retryAfterSeconds: error.retryAfterSeconds };
     return result; // 로컬 검색 결과(result.recommendations)를 그대로 보여준다
   }
 }

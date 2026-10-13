@@ -16,6 +16,7 @@
     "check:ai": "node scripts/check-ai.mjs",
     "check:http": "node scripts/check-http.mjs",
     "check:security": "node scripts/check-security.mjs",
+    "check:shared-ai": "node scripts/check-shared-ai.mjs",
     "probe:ai": "node scripts/probe-ai-models.mjs",
     "compare:ai": "node scripts/compare-ai.mjs",
     "evidence": "node scripts/save-evidence.mjs",

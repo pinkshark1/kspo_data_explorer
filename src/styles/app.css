@@ -2976,6 +2976,36 @@ select:focus-visible {
   gap: 6px;
   display: grid;
 }
+.ask-verification {
+  min-width: 0;
+  max-width: 100%;
+}
+.ask-shared-options,
+.ask-shared-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  color: var(--krds-gray-70);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.ask-shared-options button,
+.ask-shared-actions button {
+  min-height: 40px;
+  border: 1px solid var(--krds-gray-30);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  background: #fff;
+  color: var(--primary-strong);
+  font: inherit;
+  cursor: pointer;
+}
+.ask-shared-options button:focus-visible,
+.ask-shared-actions button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
 .ask-key label {
   color: var(--krds-gray-70);
   font-size: 12px;

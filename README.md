@@ -227,12 +227,13 @@ npm start                     # http://localhost:4173 (종료: Ctrl+C)
 | 데이터 탐색 | `data/explorer-data.json`(목록·컬럼·샘플)과 `data/portal-meta.json`(포털 수정일·이용허락범위)을 브라우저가 읽어 검색·필터·상세를 구성 |
 | 관계도 | 데이터의 출처 시스템·분야로 묶은 연결을 캔버스에 그림 (노드 검색·확대·펼치기) |
 | 질문 검색 - 기본 검색 | 질문에서 낱말을 뽑고 유의어 사전(`src/ai/thesaurus.js`)으로 넓혀 이름·키워드·컬럼·설명 일치를 점수화. AI 호출 없이 브라우저 안에서 처리 |
-| 질문 검색 - AI 추천(선택) | 기본 검색 상위 후보(최대 30건, 검색이 약하면 전체 목록을 이름·분야만으로)의 이름·분야·설명 요약·컬럼을 이용자 본인 키로 Google Gemini API에 보내 추천 이유·관련도·활용 조합을 받음. 후보 밖 번호는 버리고, 실패하면 기본 검색 결과로 전환 |
+| 질문 검색 - AI 추천 | 기본 검색 상위 후보(최대 30건, 검색이 약하면 전체 목록을 이름·분야만으로)의 이름·분야·설명 요약·컬럼을 공용 무료 중계를 통해 Google Gemini API에 보내 추천 이유·관련도·활용 조합을 받음. 공용 한도 도달 시 본인 키 사용을 안내하며, 실패하면 기본 검색 결과로 전환 |
 
 ### AI 추천 설정
 
-- 모델: `data/site.json` 의 `ai.gemini.models` - Gemini 3.5 Flash-Lite(`gemini-3.5-flash-lite`, 기본), Gemma 4 31B(`gemma-4-31b-it`, 오픈 모델). 같은 키로 화면의 ‘모델’ 칸에서 고릅니다.
-- 키: 화면의 ‘Gemini API 키’ 칸에 입력하며 이 페이지의 메모리에서만 쓰고 저장하지 않습니다. 소스·데이터·문서에 키를 넣지 않습니다.
+- 모델: 공용 무료 AI는 Gemini 3.5 Flash-Lite(`gemini-3.5-flash-lite`)를 사용합니다. 본인 키로 전환하면 `data/site.json`의 `ai.gemini.models`에 있는 Gemini와 Gemma 4 31B(`gemma-4-31b-it`, 오픈 모델)를 고를 수 있습니다.
+- 개인 키: 화면의 ‘Gemini API 키’ 칸에 입력하며 이 페이지의 메모리에서만 쓰고 저장하지 않습니다. 소스·데이터·문서에 키를 넣지 않습니다. 본인 프로젝트의 한도·요금이 적용됩니다.
+- 공용 무료 AI: `ai.gemini.shared.url`과 Turnstile 공개 사이트 키를 연결해 키 없이 먼저 이용하고, 공용 한도에 도달했을 때 본인 키로 계속할 수 있습니다. 공용 키와 방문자 검증 Secret은 서버에만 둡니다. 주소가 비어 있으면 기존 본인 키 방식이 유지됩니다. 연결 절차는 [배포 안내](DEPLOYMENT.md)를 참고하세요.
 - 교체: 같은 서비스의 다른 모델은 `ai.gemini.models` 에 추가, 다른 서비스는 `src/ai/providers/` 에 같은 형태의 파일을 추가합니다. 자세한 내용은 [docs/AI_FEATURE.md](docs/AI_FEATURE.md).
 - 기관 AI 서버 연결 규격(운영하지 않음): 요청 `{ question, candidates }` → 응답 `{ summary, recommendations[{ no, relevance, reason }], combinations[{ title, nos, idea }] }`. 참조 구현은 `scripts/ai-gateway.mjs` 이며 `ai.modes` 에 `gateway` 를 켜고 서버 주소를 넣어야 동작합니다.
 - 모델 선택 기준: 국민이 무료로 발급받는 키 하나로 쓸 수 있고, 같은 키로 오픈 모델(Gemma)까지 고를 수 있는 Gemini API를 택했습니다. 다른 서비스로 바꾸는 구조와 이력은 [docs/AI_FEATURE.md](docs/AI_FEATURE.md)에 있습니다.

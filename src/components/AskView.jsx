@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cycleLabel, deliveryOf, portalOf, shortField } from "../lib/catalog.js";
 import { buildIndex } from "../ai/retrieval.js";
 import { recommend } from "../ai/recommend.js";
+import { sharedGeminiUrl } from "../ai/providers/shared-gemini.js";
+import { verifySharedUsage } from "../ai/providers/turnstile.js";
 
 const RELEVANCE_LABEL = { high: "관련도 높음", medium: "관련도 보통", low: "참고" };
 
 // 이용자 본인의 API 키로 이 브라우저에서 직접 부르는 방식. 모델·안내 주소는 site.json 의 ai.<방식> 에 있다.
 const KEY_MODES = {
-  gemini: { name: "Gemini", target: "Google(Gemini)", host: "Google", keyLabel: "Gemini API 키", placeholder: "AIza..." },
+  gemini: { name: "Gemini", target: "Google(Gemini)", host: "Google", keyLabel: "Gemini API 키", placeholder: "API 키 붙여넣기" },
 };
 
 // 방식 설정에서 고를 수 있는 모델 목록. ai.<방식>.models 가 없으면 기본 모델 하나뿐이다.
@@ -21,7 +23,9 @@ function availableModes(ai) {
   const modes = [{ id: "local", label: "기본 검색", hint: "키 없이 누구나 바로 씁니다. 질문 속 낱말과 비슷한 말로 이 브라우저 안에서 찾습니다." }];
   for (const [id, info] of Object.entries(KEY_MODES)) {
     if (wanted.includes(id) && ai[id]) {
-      const hint = `Google AI가 질문을 읽고 추천 이유와 함께 쓸 데이터 조합까지 알려 줍니다. 본인의 ${info.keyLabel}(무료 발급)가 필요합니다.`;
+      const hint = sharedGeminiUrl(ai[id])
+        ? "공용 무료 AI가 질문을 읽고 추천 이유와 데이터 조합을 알려 줍니다. 공용 이용 한도에 도달하면 본인의 Gemini API 키로 계속 이용할 수 있습니다."
+        : `Google AI가 질문을 읽고 추천 이유와 함께 쓸 데이터 조합까지 알려 줍니다. 본인의 ${info.keyLabel}(무료 발급)가 필요합니다.`;
       modes.push({ id, label: `AI 추천 (${info.name})`, hint });
     }
   }
@@ -80,7 +84,10 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
   // 방식별 API 키. 이 화면의 메모리에만 있다. 저장하지 않고, 화면을 벗어나면 사라진다.
   // 방식마다 따로 두는 이유: 키가 필요한 방식이 늘어도 앞서 입력한 키가 엉뚱한 서비스로 나가지 않게 하려고.
   const [keys, setKeys] = useState({});
+  const sharedEnabled = mode === "gemini" && !!sharedGeminiUrl(ai.gemini);
+  const [usePersonalKey, setUsePersonalKey] = useState(false);
   const keyMode = KEY_MODES[mode]; // 키를 입력해야 하는 방식이면 그 정보, 아니면 undefined
+  const needsKey = keyMode && (!sharedEnabled || usePersonalKey);
   const apiKey = keys[mode] ?? "";
   // 방식별로 고른 모델. 고르지 않았으면 설정의 기본 모델. 키와 달리 비밀이 아니므로 화면에 있는 동안만 기억한다.
   const [pickedModels, setPickedModels] = useState({});
@@ -90,12 +97,17 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
   const [result, setResult] = useState(saved?.result ?? null);
   const [formError, setFormError] = useState("");
   const [liveMessage, setLiveMessage] = useState("");
+  const [verifying, setVerifying] = useState(false);
   const abortRef = useRef(null);
+  const verificationRef = useRef(null);
   const keyRef = useRef(null);
   const questionRef = useRef(null);
   const headingRef = useRef(null);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(() => () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }, []);
 
   // 저장된 AI 추천 예시: 실제 키로 받은 응답을 data/ai-examples.json 에 둔 것. 예시 질문이면 키 없이 보여 준다. (새로 AI 를 부르지 않음)
   const savedExamples = store.aiExamples;
@@ -105,9 +117,12 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
     const example = exampleFor(text);
     if (!example) return;
     abortRef.current?.abort();
-    abortRef.current = null;
+    const controller = new AbortController();
+    abortRef.current = controller;
     setFormError("");
-    const local = await recommend({ question: example.question, mode: "local", store, index });
+    setVerifying(false);
+    const local = await recommend({ question: example.question, mode: "local", store, index, signal: controller.signal });
+    if (abortRef.current !== controller) return;
     const next = {
       ...local,
       mode,
@@ -132,36 +147,60 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
     if (status === "done" && result && !result.restored) headingRef.current?.focus();
   }, [status, result]);
 
-  const ask = async (text) => {
+  const ask = async (text, options = {}) => {
+    const requestMode = options.mode ?? mode;
+    const personal = options.usePersonalKey ?? usePersonalKey;
+    const shared = requestMode === "gemini" && !!sharedGeminiUrl(ai.gemini) && !personal;
+    const requestKeyMode = KEY_MODES[requestMode];
+    const requestKey = (keys[requestMode] ?? "").trim();
     const trimmed = text.trim();
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setVerifying(false);
+    setStatus(result ? "done" : "idle");
     setFormError("");
     if (trimmed.length < 2) {
       setFormError("궁금한 내용을 두 글자 이상 입력해 주세요.");
       questionRef.current?.focus();
       return;
     }
-    if (keyMode && !apiKey.trim()) {
+    if (requestKeyMode && !shared && !requestKey) {
       // 키가 없어도 예시 질문이면 저장된 실제 응답을 보여 준다
       if (exampleFor(trimmed)) {
         showSavedExample(trimmed);
         return;
       }
-      setFormError(`AI 추천을 쓰려면 ${keyMode.keyLabel}를 입력해 주세요. 키 없이 쓰려면 ‘기본 검색’을 선택하세요.`);
+      setFormError(`AI 추천을 쓰려면 ${requestKeyMode.keyLabel}를 입력해 주세요. 키 없이 쓰려면 ‘기본 검색’을 선택하세요.`);
       keyRef.current?.focus();
       return;
     }
-    abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     setStatus("loading");
     setLiveMessage("질문을 분석하고 있습니다.");
     try {
-      const next = await recommend({ question: trimmed, mode, store, index, apiKey: apiKey.trim(), model, signal: controller.signal });
+      let verificationToken;
+      let next;
+      if (shared) {
+        setVerifying(true);
+        setLiveMessage("공용 무료 AI 이용 확인 중입니다.");
+        try {
+          verificationToken = await verifySharedUsage({ siteKey: ai.gemini.shared.turnstileSiteKey, container: verificationRef.current, signal: controller.signal });
+        } catch (error) {
+          if (controller.signal.aborted || error?.code === "cancelled") throw error;
+          const local = await recommend({ question: trimmed, mode: "local", store, index, signal: controller.signal });
+          next = { ...local, mode: requestMode, aiSource: "shared", errorCode: error?.code === "shared_config" ? "shared_config" : "shared_verification", error: error?.code === "shared_config" ? "공용 무료 AI 이용 확인 설정이 준비되지 않았습니다. 기본 검색을 이용해 주세요." : "공용 무료 AI 이용 확인을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요." };
+        }
+        if (abortRef.current !== controller) return;
+        setVerifying(false);
+        setLiveMessage("질문을 분석하고 있습니다.");
+      }
+      next ??= await recommend({ question: trimmed, mode: requestMode, store, index, apiKey: shared ? undefined : requestKey, model, usePersonalKey: personal, verificationToken, signal: controller.signal });
       if (abortRef.current !== controller) return; // 그 사이 새 질문을 보냈거나 취소했다면 이 결과는 버린다
       setResult(next);
       setStatus("done");
       setLiveMessage(next.recommendations.length ? `추천 데이터 ${next.recommendations.length}건을 찾았습니다.` : "관련 데이터를 찾지 못했습니다.");
-      onSave({ question: trimmed, mode, result: { ...next, restored: true } });
+      onSave({ question: trimmed, mode: requestMode, result: { ...next, restored: true } });
     } catch (error) {
       if (abortRef.current !== controller || error?.code === "cancelled") return;
       setFormError("검색 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
@@ -182,6 +221,7 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
   const cancel = () => {
     abortRef.current?.abort();
     abortRef.current = null;
+    setVerifying(false);
     setStatus(result ? "done" : "idle");
     setLiveMessage("질문을 취소했습니다.");
   };
@@ -193,12 +233,43 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
 
   const useExample = (text) => {
     setQuestion(text);
+    if (sharedEnabled && exampleFor(text)) {
+      showSavedExample(text);
+      return;
+    }
     ask(text);
+  };
+
+  const changeMode = (nextMode) => {
+    cancel();
+    setFormError("");
+    setMode(nextMode);
+    setUsePersonalKey(false);
+  };
+
+  const choosePersonalKey = () => {
+    cancel();
+    setFormError("");
+    setUsePersonalKey(true);
+  };
+
+  useEffect(() => {
+    if (sharedEnabled && usePersonalKey) keyRef.current?.focus();
+  }, [sharedEnabled, usePersonalKey]);
+
+  const retryShared = () => {
+    setUsePersonalKey(false);
+    ask(question, { usePersonalKey: false });
+  };
+
+  const useLocal = () => {
+    changeMode("local");
+    ask(question, { mode: "local", usePersonalKey: false });
   };
 
   const modeInfo = modes.find((entry) => entry.id === mode);
   const isAi = mode !== "local";
-  const sendTarget = keyMode ? keyMode.target : ai.gateway?.label || "기관 AI 서버";
+  const sendTarget = sharedEnabled && !usePersonalKey ? "공용 무료 AI 서버와 Google(Gemini)" : keyMode ? keyMode.target : ai.gateway?.label || "기관 AI 서버";
   const loading = status === "loading";
 
   return (
@@ -215,7 +286,7 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
             <legend>검색 방식</legend>
             {modes.map((entry) => (
               <label key={entry.id} className={mode === entry.id ? "active" : ""}>
-                <input type="radio" name="ask-mode" value={entry.id} checked={mode === entry.id} onChange={() => setMode(entry.id)} />
+                <input type="radio" name="ask-mode" value={entry.id} checked={mode === entry.id} onChange={() => changeMode(entry.id)} />
                 <span>
                   <b>{entry.label}</b>
                   <small>{entry.hint}</small>
@@ -225,7 +296,20 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
           </fieldset>
         )}
 
-        {keyMode && (
+        {sharedEnabled && (
+          <div className="ask-shared-options">
+            <span>{usePersonalKey ? "본인 키로 Google에 직접 요청합니다." : "공용 무료 AI를 이용합니다. 키를 입력할 필요가 없습니다."}</span>
+            {usePersonalKey ? (
+              <button type="button" onClick={retryShared}>공용 무료 AI로 전환</button>
+            ) : (
+              <button type="button" onClick={choosePersonalKey}>내 키 사용하기 (선택)</button>
+            )}
+          </div>
+        )}
+
+        {sharedEnabled && <div className="ask-verification" ref={verificationRef} aria-label="공용 무료 AI 이용 확인" />}
+
+        {needsKey && (
           <div className="ask-key">
             <label htmlFor="ask-api-key">{keyMode.keyLabel}</label>
             <input
@@ -243,6 +327,7 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
             />
             <p id="ask-key-help">
               입력한 키는 이 브라우저의 메모리에서만 쓰이며 저장되지 않고, 이 화면을 벗어나면 사라집니다. 호출은 이 브라우저에서 {keyMode.host}로 직접 이루어집니다.
+              {sharedEnabled && " 본인 Google 프로젝트의 이용 한도가 적용됩니다. 유료 프로젝트에 연결된 키는 비용이 발생할 수 있습니다."}
               {ai[mode]?.keyGuideUrl && (
                 <>
                   {" "}
@@ -255,10 +340,13 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
           </div>
         )}
 
-        {keyMode && modelList.length > 1 && (
+        {needsKey && modelList.length > 1 && (
           <div className="ask-model">
             <label htmlFor="ask-model">모델</label>
-            <select id="ask-model" value={model} onChange={(event) => setPickedModels((current) => ({ ...current, [mode]: event.target.value }))}>
+            <select id="ask-model" value={model} onChange={(event) => {
+              cancel();
+              setPickedModels((current) => ({ ...current, [mode]: event.target.value }));
+            }}>
               {modelList.map((entry) => (
                 <option key={entry.model} value={entry.model}>
                   {entry.label}
@@ -293,6 +381,7 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
         {isAi && (
           <p className="ask-privacy">
             ※ 질문과 후보 데이터의 이름·분야·설명 요약이 <b>{sendTarget}</b>로 전송됩니다. 개인정보·비밀번호는 입력하지 마세요.
+            {sharedEnabled && !usePersonalKey && " 공용 AI 이용 확인에는 Cloudflare Turnstile을 사용합니다."}
           </p>
         )}
         {formError && (
@@ -321,7 +410,7 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
       <div className="ask-result">
         {loading && (
           <p className="ask-status">
-            {isAi ? `${modeInfo?.label}로 질문을 분석하고 있습니다…` : "찾는 중입니다…"}{" "}
+            {verifying ? "공용 무료 AI 이용 확인 중…" : isAi ? `${modeInfo?.label}로 질문을 분석하고 있습니다…` : "찾는 중입니다…"}{" "}
             <button type="button" className="ask-cancel" onClick={cancel}>
               취소
             </button>
@@ -339,13 +428,21 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
               </p>
             )}
 
+            {sharedEnabled && result.aiSource === "shared" && result.error && (
+              <div className="ask-shared-actions">
+                {result.errorCode === "shared_quota" && !usePersonalKey && <button type="button" onClick={choosePersonalKey}>내 키로 계속하기</button>}
+                <button type="button" onClick={retryShared}>무료 AI 다시 시도</button>
+                <button type="button" onClick={useLocal}>기본 검색</button>
+              </div>
+            )}
+
             {result.usedAi && result.summary && (
               <div className={`ask-summary${result.saved ? " saved" : ""}`}>
                 <span className="ask-badge">{result.saved ? "AI 추천 예시" : "AI 안내"}</span>
                 <p>{result.summary}</p>
                 {result.saved && (
                   <p className="ask-saved-note">
-                    {result.saved.date}에 {result.saved.label}로 실제로 받은 응답을 저장해 둔 예시입니다. 다른 질문은 본인 키로 ‘AI 추천’을 쓰면 새로 받을 수 있습니다.
+                    {result.saved.date}에 {result.saved.label}로 실제로 받은 응답을 저장해 둔 예시입니다. 다른 질문은 {sharedEnabled ? "공용 무료 AI 또는 본인 키" : "본인 키"}로 ‘AI 추천’을 쓰면 새로 받을 수 있습니다.
                   </p>
                 )}
               </div>

@@ -1,10 +1,10 @@
 # KSPO 데이터 지도 분리형 배포 안내
 
-KSPO 데이터 지도는 서버 프로그램·데이터베이스·로그인 없이 **정적 파일만으로** 동작합니다. 화면 코드(`src/`)를 빌드해 만든 파일과 데이터(JSON)를 그대로 웹 경로에 올리면 됩니다.
+KSPO 데이터 지도의 기본 탐색은 서버 프로그램·데이터베이스·로그인 없이 **정적 파일만으로** 동작합니다. 화면 코드(`src/`)를 빌드해 만든 파일과 데이터(JSON)를 그대로 웹 경로에 올리면 됩니다. 공용 무료 AI를 켜는 경우에만 키를 보관할 중계 서버를 별도로 연결합니다.
 
 ## 파일 구성
 
-운영 서버에는 아래 공개 파일만 올립니다. 저장소 전체를 웹 루트로 복사하지 않습니다. `src/`, `scripts/`, `docs/`, `node_modules/`, 환경 파일과 로컬 설정은 배포 대상에서 제외합니다.
+운영 서버에는 아래 공개 파일만 올립니다. 저장소 전체를 웹 루트로 복사하지 않습니다. `src/`, `server/`, `scripts/`, `docs/`, `node_modules/`, 환경 파일과 로컬 설정은 배포 대상에서 제외합니다.
 
 ```text
 /
@@ -44,6 +44,19 @@ npm run check:security && npm run check:http    # 공개 범위·인증정보·H
 3. 브라우저에서 `https://www.kspo.or.kr/.../index.html` 형태로 접속하여 기능을 점검합니다.
 4. 검증 완료 후 기존 메뉴에 노출합니다.
 
+## 공용 무료 AI 연결
+
+공용 무료 AI는 아래 절차로 별도 연결합니다. 정적 화면의 기존 배포 경로는 유지합니다.
+
+1. Google AI Studio에서 공용 키가 속한 프로젝트가 **Free 등급**이고 결제가 연결되지 않았는지 확인합니다. 키는 채팅·소스·`site.json`에 넣지 않습니다.
+2. Cloudflare의 무료 Turnstile 위젯을 만들고 실제 화면의 호스트 이름을 등록합니다. 위젯 유형은 **Managed**, Pre-clearance는 끔으로 설정합니다. 공개 사이트 키는 화면 설정에, Secret 키는 Worker의 `TURNSTILE_SECRET_KEY`에 사용합니다. 두 키를 혼동하지 않습니다.
+3. Cloudflare Workers 무료 요금제에서 `server/wrangler.toml`과 `server/shared-ai-worker.js`를 배포합니다. 런타임 Secret `GEMINI_API_KEY`에 공용 Gemini 키, `TURNSTILE_SECRET_KEY`에 방문자 검증 Secret을 등록하고, `AI_ALLOWED_ORIGINS`에 실제 화면의 Origin(경로 없이)을 지정합니다. `GEMINI_FREE_TIER_CONFIRMED`는 Free 확인 후에만 `true`로 설정합니다. 이 값으로 Google의 결제 설정이 변경되는 것은 아닙니다.
+4. Wrangler 4.36 이상을 사용하는 경우 `npx wrangler deploy --config server/wrangler.toml --var AI_ALLOWED_ORIGINS:https://실제-화면-도메인 --var GEMINI_FREE_TIER_CONFIRMED:true`로 배포합니다. `npx wrangler secret put GEMINI_API_KEY --config server/wrangler.toml`과 `npx wrangler secret put TURNSTILE_SECRET_KEY --config server/wrangler.toml`의 입력 프롬프트에서 각 Secret을 등록합니다. Secret을 명령줄 인자로 넣지 않습니다. 재배포 시에도 Origin·확인값을 지정해야 합니다. 미설정 상태에서는 서버가 외부 AI를 호출하지 않습니다.
+5. 실제 `/healthz`를 확인한 뒤 검수용 화면의 `data/site.json`에서 `ai.gemini.shared.url`에 HTTPS `/recommend` 주소, `ai.gemini.shared.turnstileSiteKey`에 공개 사이트 키를 넣고 `ai.defaultMode`를 `gemini`로 변경합니다. 등록한 호스트에서 방문자 검증과 실제 추천을 확인한 뒤 운영 설정에 반영합니다. url이 비어 있으면 공용 기능을 켜지 않습니다. CSP가 있다면 아래 안내에 따라 중계 주소와 Turnstile을 허용합니다.
+6. `npm run build`, `npm run check:data`, `npm run check:ui`, `npm run check:search`, `npm run check:ai`, `npm run check:shared-ai`, `npm run check:security`를 실행하고 화면을 반영합니다. 실제 무료 한도를 고의로 소진하지 말고 모의 429 응답으로 개인 키 전환을 검증합니다.
+
+Cloudflare의 무료 요청·CPU 한도에 들어가는지 확인하고, 무료 요금제를 유지합니다. Worker에서 원문 요청·API 키를 로그에 쓰지 않습니다. `.dev.vars*`와 `.wrangler/`는 로컬 설정으로 Git에서 제외합니다. 자세한 흐름과 한도 구분은 [질문 검색 안내](docs/AI_FEATURE.md#공용-무료-ai--본인-키-전환)를 참고하세요.
+
 ## 권장 MIME 유형
 
 | 확장자 | Content-Type |
@@ -61,11 +74,11 @@ HTML이 다운로드되지 않고 화면에 표시되도록 `Content-Disposition
 
 ## 보안 특성
 
-- 실행 코드는 `assets/app.js` 하나이며 HTML 내부 인라인 JavaScript는 없습니다.
+- 자체 실행 코드는 `assets/app.js`이며 HTML 내부 인라인 JavaScript는 없습니다. 공용 무료 AI 요청 시에는 방문자 확인을 위해 Cloudflare Turnstile 스크립트와 프레임을 추가로 불러옵니다.
 - 스타일은 `assets/app.css`로 분리되어 있으며 HTML 내부 인라인 스타일 블록은 없습니다.
 - 데이터는 동일 출처의 정적 JSON만 읽습니다.
-- 서버 쓰기, 파일 업로드, 쿠키, 로그인, `localStorage` 저장 기능은 없습니다. (화면의 ‘데이터 원문’·포털 링크는 사용자가 누를 때만 새 창으로 열립니다.)
-- **외부 호출은 ‘질문 검색’의 AI 방식을 켠 경우에만, 이용자가 질문을 보낼 때** 일어납니다. 기본 검색(기본 설정)은 외부 요청이 없습니다. AI 방식은 `data/site.json` 의 `ai.modes` 로 켜고 끄며, 호출 대상은 `generativelanguage.googleapis.com`(Gemini, 이용자 본인 키) 또는 기관 AI 서버(꺼 둔 상태)입니다. 자세한 내용과 보안 특성은 [docs/AI_FEATURE.md](docs/AI_FEATURE.md).
+- 자체 화면에는 파일 업로드, 로그인, `localStorage` 저장 기능이 없습니다. Turnstile의 Pre-clearance는 사용하지 않습니다. (화면의 ‘데이터 원문’·포털 링크는 사용자가 누를 때만 새 창으로 열립니다.)
+- **외부 호출은 ‘질문 검색’의 AI 방식에서 이용자가 질문을 보낼 때** 시작합니다. 기본 검색과 저장된 예시는 외부 요청이 없습니다. 호출 대상은 `ai.gemini.shared.url`의 공용 무료 중계 및 `challenges.cloudflare.com`(방문자 확인), `generativelanguage.googleapis.com`(이용자 본인 키) 또는 별도로 설정한 기관 AI 서버입니다. 자세한 내용과 보안 특성은 [docs/AI_FEATURE.md](docs/AI_FEATURE.md).
 - 글꼴·영상·이미지는 모두 `assets/` 의 자체 파일이며 외부 CDN을 쓰지 않습니다.
 - API 키는 소스·데이터 파일·저장소에 두지 않습니다. 이용자가 입력한 키는 브라우저 메모리에서만 쓰이고, 서버 방식의 키는 중계 서버 환경변수에만 둡니다.
 - `data/site.json`은 누구나 읽을 수 있는 화면 설정입니다. 환경변수 파일을 대신하는 비밀 저장소로 사용하지 않습니다.
@@ -80,7 +93,7 @@ HTML이 다운로드되지 않고 화면에 표시되도록 `Content-Disposition
 Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; media-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
 ```
 
-질문 검색의 AI 방식을 켜면 `connect-src` 에 호출 대상을 추가합니다. (이용자 키 방식: `https://generativelanguage.googleapis.com`, 서버 방식: 기관 AI 서버 주소) 기본 검색만 쓰면 위 값 그대로 둡니다.
+질문 검색의 AI 방식을 켜면 `connect-src`에 호출 대상을 추가합니다. 이용자 키 방식은 `https://generativelanguage.googleapis.com`, 공용 무료 방식은 공용 중계 Origin, 기관 서버 방식은 해당 서버 Origin입니다. 공용 무료 방식에서는 `script-src`에 `https://challenges.cloudflare.com`을 추가하고 `frame-src https://challenges.cloudflare.com`도 지정합니다. [Turnstile CSP 안내](https://developers.cloudflare.com/turnstile/reference/content-security-policy/)를 참고하세요. 기본 검색만 쓰면 위 값 그대로 둡니다.
 
 일부 화면 요소의 동적 위치·크기 표현을 위해 React가 요소의 `style` 속성을 사용하므로 `style-src 'unsafe-inline'`이 필요할 수 있습니다. 실제 운영 CSP는 홈페이지 운영·보안 담당자의 검토를 거쳐 확정합니다.
 

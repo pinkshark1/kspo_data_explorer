@@ -69,7 +69,7 @@
       "local",
       "gemini"
     ],
-    "defaultMode": "local",
+    "defaultMode": "gemini",
     "gemini": {
       "model": "gemini-3.5-flash-lite",
       "models": [
@@ -84,6 +84,10 @@
         }
       ],
       "maxTokens": 16000,
+      "shared": {
+        "url": "https://kspo-data-map-free-ai.kspo-data-map.workers.dev/recommend",
+        "turnstileSiteKey": "0x4AAAAAAFVYGQFFIWYAe2gC"
+      },
       "keyGuideUrl": "https://aistudio.google.com/apikey"
     },
     "gateway": {

@@ -158,6 +158,17 @@ if (site.ai?.enabled) {
   const modes = ai.modes ?? [];
   for (const mode of modes) if (!["local", "gemini", "gateway"].includes(mode)) errors.push(`site.json ai.modes 에 알 수 없는 방식이 있습니다: ${mode}`);
   if (modes.includes("gemini") && !(ai.gemini?.model && ai.gemini?.maxTokens)) errors.push("site.json ai.gemini 에 model, maxTokens 가 필요합니다.");
+  if (ai.gemini?.shared?.url) {
+    try {
+      const sharedUrl = new URL(ai.gemini.shared.url);
+      const local = sharedUrl.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(sharedUrl.hostname);
+      if (!(sharedUrl.protocol === "https:" || local) || sharedUrl.username || sharedUrl.password || sharedUrl.search || sharedUrl.hash) throw new Error("invalid");
+      if (!ai.gemini.shared.turnstileSiteKey?.trim()) errors.push("공용 무료 AI에는 ai.gemini.shared.turnstileSiteKey(공개 사이트 키)가 필요합니다.");
+      info.push("공용 무료 Gemini 중계 사용 — 한도 도달 시 이용자 본인 키 입력 안내");
+    } catch {
+      errors.push("site.json ai.gemini.shared.url 은 인증정보·쿼리·해시 없는 HTTPS 주소여야 합니다(개발용 localhost 제외).");
+    }
+  }
   if (ai.gemini?.models) {
     const list = ai.gemini.models;
     if (!Array.isArray(list) || !list.length || list.some((entry) => !entry?.model || !entry?.label)) errors.push("site.json ai.gemini.models 는 model 과 label 이 있는 항목의 목록이어야 합니다.");

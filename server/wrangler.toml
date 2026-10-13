@@ -1,0 +1,20 @@
+name = "kspo-data-map-free-ai"
+main = "shared-ai-worker.js"
+compatibility_date = "2026-10-13"
+workers_dev = true
+preview_urls = false
+
+# 실제 공개 화면 Origin은 배포할 때 지정한다. API 키는 vars에 쓰지 않는다.
+[vars]
+AI_ALLOWED_ORIGINS = ""
+GEMINI_FREE_TIER_CONFIRMED = "false"
+
+# 인당 짧은 시간의 연속 요청만 제한한다. 전체 무료 한도는 Google 프로젝트가 적용한다.
+# namespace_id는 같은 Cloudflare 계정의 다른 제한과 겹치지 않게 지정한다.
+[[ratelimits]]
+name = "REQUEST_LIMITER"
+namespace_id = "10013"
+simple = { limit = 5, period = 60 }
+
+[observability]
+enabled = false

@@ -14,6 +14,7 @@ const secretPatterns = [
   [/(?:AKIA|ASIA)[A-Z0-9]{16}/g, "aws-access-key"],
   [/(?:ghp|github_pat)_[A-Za-z0-9_]{20,}/g, "github-token"],
   [/AIza[0-9A-Za-z_-]{20,}/g, "google-api-key"],
+  [/\bAQ\.[0-9A-Za-z_-]{40,}/g, "google-api-key"],
   [/sk-(?:ant-|proj-)[A-Za-z0-9_-]{30,}/g, "ai-api-key"],
   [/xox[baprs]-[A-Za-z0-9-]{20,}/g, "slack-token"],
   [/npm_[A-Za-z0-9]{30,}/g, "npm-token"],
@@ -71,6 +72,7 @@ function inspectContent(file, label) {
 const tracked = trackedFiles();
 if (!tracked.length) fail("검사할 Git 파일 목록이 비어 있습니다");
 for (const relative of tracked) {
+  if (/(?:^|[\\/])(?:\.dev\.vars(?:\..*)?|\.wrangler)(?:[\\/]|$)/i.test(relative)) fail(`추적된 중계 서버 비공개 설정 ${relative}`);
   if (blockedName.test(relative) && path.basename(relative) !== ".env.example") fail(`추적된 비공개 경로 ${relative}`);
   inspectContent(path.join(root, relative), relative);
 }
@@ -97,6 +99,7 @@ const mockKey = [...allowedMockMatches][0];
 const syntheticKey = "AIza" + "Q".repeat(35);
 if (contentFindings(`${mockKey}\n${syntheticKey}\n${syntheticKey}`, "scripts/check-ai.mjs").length !== 2) fail("인증정보 탐지 회귀: mock 예외 이후의 후보 누락");
 if (contentFindings(mockKey, "data/site.json").length !== 1) fail("인증정보 탐지 회귀: 테스트 파일 밖의 예외 허용");
+if (contentFindings("AQ." + "q".repeat(48), "data/site.json").length !== 1) fail("인증정보 탐지 회귀: 새 Google 키 형식 누락");
 if (!contentFindings(JSON.stringify({ apiKey: "q".repeat(24) }), "data/site.json").some((item) => item.kind === "credential-assignment")) fail("인증정보 탐지 회귀: JSON 설정값 누락");
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "kspo-security-"));
