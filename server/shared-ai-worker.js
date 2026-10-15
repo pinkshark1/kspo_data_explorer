@@ -1,8 +1,18 @@
-// 공용 무료 Gemini 중계. 키는 런타임 Secret에서만 읽고 방문자에게 반환하지 않는다.
+// 공용 무료 AI 중계. Claude(Anthropic 조직에 포함된 API 크레딧)를 먼저 쓰고, 설정이 없거나 실패하면 무료 Gemini로 넘긴다.
+// 키는 런타임 Secret에서만 읽고 방문자에게 반환하지 않는다.
+import Anthropic from "@anthropic-ai/sdk";
 import { AI_SCHEMA, LIMITS, buildSystemPrompt, buildUserMessage, cleanCandidate, parseAiResponse } from "../src/ai/prompt.js";
+import { runClaudeRequest } from "../src/ai/providers/claude.js";
 import { readGeminiText } from "../src/ai/providers/gemini.js";
 
 export const SHARED_MODEL = "gemini-3.5-flash-lite";
+export const SHARED_CLAUDE_MODEL = "claude-haiku-5-5";
+// 후보 중에서 고르고 짧게 설명하는 작업이라 effort를 낮춰 크레딧을 아낀다. 출력 상한은 Gemini와 같다.
+// Haiku에는 거절 시 다른 모델로 넘기는 서버 폴백이 없으므로 끈다.
+const CLAUDE_CONFIG = { model: SHARED_CLAUDE_MODEL, maxTokens: 8192, effort: "low", refusalFallback: false };
+const ANTHROPIC_URL = "https://api.anthropic.com";
+// 같은 Worker 인스턴스에서 Claude를 잠시 건너뛰는 시간. 크레딧 소진·키 오류는 곧 풀리지 않으므로 길게 둔다.
+const CLAUDE_PAUSE_MS = { billing: 10 * 60_000, key: 10 * 60_000, rate: 60_000 };
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${SHARED_MODEL}:generateContent`;
 const VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 const MAX_BODY_BYTES = 128 * 1024;
@@ -19,10 +29,20 @@ function allowedOrigins(value) {
   });
 }
 
-function ready(env) {
+function geminiReady(env) {
   // 이 확인값은 운영자의 Free 등급 확인 기록이며, Google의 결제 상태를 조회하는 장치는 아니다.
   // 결제가 연결되지 않은 전용 Free 프로젝트를 사용해야 실제 유료 호출을 방지할 수 있다.
-  return env.GEMINI_FREE_TIER_CONFIRMED === "true" && Boolean(env.GEMINI_API_KEY?.trim()) && Boolean(env.TURNSTILE_SECRET_KEY?.trim()) && allowedOrigins(env.AI_ALLOWED_ORIGINS).length > 0 && typeof env.REQUEST_LIMITER?.limit === "function";
+  return env.GEMINI_FREE_TIER_CONFIRMED === "true" && Boolean(env.GEMINI_API_KEY?.trim());
+}
+
+function claudeReady(env) {
+  // 이 확인값은 운영자가 Anthropic Console 조직에 구매한 크레딧이 없고 자동 충전이 꺼져 있음을 확인한 기록이며, 결제 상태를 조회하는 장치는 아니다.
+  // 그 상태에서는 포함 크레딧이 바닥나면 Anthropic이 요청을 거절하므로 크레딧을 넘어 과금되지 않는다.
+  return env.ANTHROPIC_CREDITS_ONLY_CONFIRMED === "true" && Boolean(env.ANTHROPIC_API_KEY?.trim());
+}
+
+function ready(env) {
+  return (claudeReady(env) || geminiReady(env)) && Boolean(env.TURNSTILE_SECRET_KEY?.trim()) && allowedOrigins(env.AI_ALLOWED_ORIGINS).length > 0 && typeof env.REQUEST_LIMITER?.limit === "function";
 }
 
 async function boundedText(message, limit) {
@@ -83,11 +103,21 @@ function pause(ms, signal) {
   });
 }
 
+// Claude가 정해진 시간 안에 답하지 못하거나 실패하면(거절 제외) 같은 질문을 Gemini에 묻는다. 이용 확인은 다시 하지 않는다.
 // Google이 일시 과부하(500·503 "high demand")로 즉시 거절하면 짧게 기다렸다 다시 묻는다.
 // 한도 소진(429)은 다시 묻지 않는다.
-export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args), timeoutMs = 55_000, maxConcurrent = 4, retryDelaysMs = [1_000, 2_500] } = {}) {
+export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args), timeoutMs = 55_000, claudeTimeoutMs = 20_000, maxConcurrent = 4, retryDelaysMs = [1_000, 2_500] } = {}) {
   // 동시 처리 수는 Worker 인스턴스별 보호 장치다. 전체 Google 한도는 Free 프로젝트가 적용한다.
   let active = 0;
+  let claudePause = { until: 0, reason: null };
+
+  // SDK가 환경변수의 주소·인증값을 쓰지 않도록 주소와 키를 직접 지정한다. 실패는 Gemini가 대신하므로 SDK 재시도는 끈다.
+  async function askClaude(env, input, signal) {
+    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY.trim(), authToken: null, baseURL: ANTHROPIC_URL, maxRetries: 0, timeout: claudeTimeoutMs, fetch: fetchImpl, fetchOptions: { redirect: "manual" } });
+    const text = await runClaudeRequest({ Anthropic, client, config: CLAUDE_CONFIG, system: SYSTEM, userMessage: buildUserMessage(input.question, input.candidates), signal });
+    return parseAiResponse(text, input.candidates.map((candidate) => candidate.no));
+  }
+
   return async function handle(request, env) {
     const origin = request.headers.get("origin") ?? "";
     const allowed = allowedOrigins(env.AI_ALLOWED_ORIGINS).includes(origin);
@@ -102,7 +132,7 @@ export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args),
     if (!ready(env)) return send(503, { error: "unavailable" });
     if (request.signal.aborted) return send(499, { error: "cancelled" });
     if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get("content-type") ?? "")) return send(415, { error: "bad_request" });
-    if (request.headers.has("authorization") || request.headers.has("x-goog-api-key")) return send(400, { error: "bad_request" });
+    if (request.headers.has("authorization") || request.headers.has("x-goog-api-key") || request.headers.has("x-api-key")) return send(400, { error: "bad_request" });
     // CF-Connecting-IP는 Cloudflare가 붙인 값만 사용한다. 일반 전달 헤더는 신뢰하지 않는다.
     const ip = request.headers.get("cf-connecting-ip");
     if (!ip) return send(503, { error: "unavailable" });
@@ -136,6 +166,35 @@ export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args),
       catch { return send(503, { error: "unavailable" }); }
       if (verified.success !== true || verified.action !== "shared-ai" || verified.hostname !== new URL(origin).hostname) return send(403, { error: "verification_failed" });
       if (controller.signal.aborted) return send(499, { error: "cancelled" });
+      let claudeFailure = null;
+      if (claudeReady(env)) {
+        if (Date.now() < claudePause.until) claudeFailure = claudePause.reason;
+        else {
+          const claudeController = new AbortController();
+          const stopClaude = () => claudeController.abort();
+          controller.signal.addEventListener("abort", stopClaude, { once: true });
+          const claudeTimer = setTimeout(stopClaude, claudeTimeoutMs);
+          try {
+            const answer = await askClaude(env, input, claudeController.signal);
+            if (answer) return send(200, answer, { "X-AI-Provider": "claude" });
+            claudeFailure = "format";
+          } catch (error) {
+            if (error?.code === "refusal") return send(422, { error: "refusal" });
+            claudeFailure = error?.code ?? "server";
+            if (CLAUDE_PAUSE_MS[claudeFailure]) claudePause = { until: Date.now() + CLAUDE_PAUSE_MS[claudeFailure], reason: claudeFailure };
+          } finally {
+            clearTimeout(claudeTimer);
+            controller.signal.removeEventListener("abort", stopClaude);
+          }
+          if (controller.signal.aborted) return send(request.signal.aborted ? 499 : 504, { error: request.signal.aborted ? "cancelled" : "upstream" });
+        }
+      }
+      if (!geminiReady(env)) {
+        // 크레딧 소진은 화면이 본인 키 안내를 보여 주도록 공용 한도 소진으로 알린다.
+        if (claudeFailure === "billing") return send(429, { error: "shared_quota", quota: "unknown" });
+        if (claudeFailure === "rate") return send(429, { error: "busy" }, { "Retry-After": "60" });
+        return send(502, { error: "upstream" });
+      }
       const geminiBody = JSON.stringify({
         systemInstruction: { parts: [{ text: SYSTEM }] },
         contents: [{ role: "user", parts: [{ text: buildUserMessage(input.question, input.candidates) }] }],
@@ -166,7 +225,7 @@ export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args),
       if (!response.ok) return send(502, { error: "upstream" });
       const answer = parseAiResponse(readGeminiText(data), input.candidates.map((candidate) => candidate.no));
       if (!answer) return send(502, { error: "upstream" });
-      return send(200, answer);
+      return send(200, answer, { "X-AI-Provider": "gemini" });
     } catch (error) {
       if (request.signal.aborted) return send(499, { error: "cancelled" });
       if (error?.code === "refusal") return send(422, { error: "refusal" });

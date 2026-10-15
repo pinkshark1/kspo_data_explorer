@@ -1,6 +1,6 @@
 // Claude API 호출. 공식 SDK(@anthropic-ai/sdk)를 쓴다.
-// 기관 AI 서버(scripts/ai-gateway.mjs, 참조 구현)가 기관의 키로 호출할 때만 쓴다. 화면(브라우저)에서는 부르지 않으므로
-// 이 파일은 배포용 assets/app.js 에 들어가지 않는다. (브라우저에서 이용자 키로 부르는 방식은 Gemini 하나뿐이다)
+// 서버가 기관의 키로 호출할 때만 쓴다: 공용 무료 AI 중계(server/shared-ai-worker.js)와 기관 AI 서버(scripts/ai-gateway.mjs, 참조 구현).
+// 화면(브라우저)에서는 부르지 않으므로 이 파일은 배포용 assets/app.js 에 들어가지 않는다. (브라우저에서 이용자 키로 부르는 방식은 Gemini 하나뿐이다)
 import { AiError } from "../errors.js";
 import { AI_SCHEMA, FORMAT_HINT } from "../prompt.js";
 
@@ -8,6 +8,7 @@ import { AI_SCHEMA, FORMAT_HINT } from "../prompt.js";
 export function toAiError(error, Anthropic) {
   if (error?.name === "AbortError" || error instanceof Anthropic.APIUserAbortError) return new AiError("cancelled", "요청을 취소했습니다.");
   if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError) return new AiError("key", "API 키가 올바르지 않거나 이 모델을 쓸 권한이 없습니다. 키를 확인해 주세요.");
+  if (error instanceof Anthropic.APIError && (error.type === "billing_error" || error.status === 402)) return new AiError("billing", "AI 이용 크레딧이 소진되었거나 결제 설정에 문제가 있습니다.");
   if (error instanceof Anthropic.RateLimitError) return new AiError("rate", "요청이 너무 많거나 사용 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.");
   if (error instanceof Anthropic.BadRequestError) return new AiError("server", `요청이 거절되었습니다. (${error.message})`);
   if (error instanceof Anthropic.APIConnectionError) return new AiError("network", "Claude 서비스에 연결하지 못했습니다. 네트워크나 보안 설정(외부 접속 제한)을 확인해 주세요.");
@@ -53,7 +54,7 @@ export async function runClaudeRequest({ Anthropic, client, config, system, user
       break;
     } catch (error) {
       lastError = error;
-      if (!(error instanceof Anthropic.BadRequestError)) throw toAiError(error, Anthropic);
+      if (!(error instanceof Anthropic.BadRequestError) || error.type === "billing_error") throw toAiError(error, Anthropic);
     }
   }
   if (!response) throw toAiError(lastError, Anthropic);

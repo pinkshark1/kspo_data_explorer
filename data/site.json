@@ -86,7 +86,9 @@
       "maxTokens": 16000,
       "shared": {
         "url": "https://kspo-data-map-free-ai.kspo-data-map.workers.dev/recommend",
-        "turnstileSiteKey": "0x4AAAAAAFVYGQFFIWYAe2gC"
+        "turnstileSiteKey": "0x4AAAAAAFVYGQFFIWYAe2gC",
+        "name": "Claude·Gemini",
+        "target": "Anthropic(Claude)·Google(Gemini)"
       },
       "keyGuideUrl": "https://aistudio.google.com/apikey"
     },

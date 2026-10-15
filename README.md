@@ -97,9 +97,9 @@ flowchart LR
 
 - 질문을 읽고 후보 데이터의 설명·항목을 비교해 **추천 이유와 함께 쓸 데이터 조합**을 제안합니다.
 - **목록 안에서만:** 공단이 개방한 후보 안에서만 고르고, 목록에 없는 데이터는 화면에서 걸러냅니다.
-- **키 없이 무료로:** 이용 확인(Cloudflare Turnstile)만 거치면 API 키 없이 공용 무료 AI(Gemini 3.5 Flash-Lite)로 질문할 수 있습니다. 공용 무료 한도에 도달하면 ‘내 키로 계속하기’로 본인 키를 쓸 수 있습니다. 예시 질문은 저장해 둔 실제 응답을 AI 호출 없이 보여 줍니다.
+- **키 없이 무료로:** 이용 확인(Cloudflare Turnstile)만 거치면 API 키 없이 공용 무료 AI(Claude Haiku 5.5, 답하지 못하면 Gemini 3.5 Flash-Lite)로 질문할 수 있습니다. 공용 무료 한도에 도달하면 ‘내 키로 계속하기’로 본인 키를 쓸 수 있습니다. 예시 질문은 저장해 둔 실제 응답을 AI 호출 없이 보여 줍니다.
 - **끊기지 않음:** 한도 도달·일시 혼잡·AI 실패 때도 기본 검색 결과로 바로 전환합니다.
-- **근거 대조·모델 교체:** 추천 이유의 낱말이 실제 데이터에 있는지 대조해 기록했고(51개 모두 확인, 품질 평가는 아님), 같은 구조로 Gemini·Gemma(오픈 모델)를 바꿔 씁니다.
+- **근거 대조·모델 교체:** 추천 이유의 낱말이 실제 데이터에 있는지 대조해 기록했고(51개 모두 확인, 품질 평가는 아님), 같은 구조로 Claude·Gemini·Gemma(오픈 모델)를 바꿔 씁니다.
 
 ---
 
@@ -228,16 +228,16 @@ npm start                     # http://localhost:4173 (종료: Ctrl+C)
 | 데이터 탐색 | `data/explorer-data.json`(목록·컬럼·샘플)과 `data/portal-meta.json`(포털 수정일·이용허락범위)을 브라우저가 읽어 검색·필터·상세를 구성 |
 | 관계도 | 데이터의 출처 시스템·분야로 묶은 연결을 캔버스에 그림 (노드 검색·확대·펼치기) |
 | 질문 검색 - 기본 검색 | 질문에서 낱말을 뽑고 유의어 사전(`src/ai/thesaurus.js`)으로 넓혀 이름·키워드·컬럼·설명 일치를 점수화. AI 호출 없이 브라우저 안에서 처리 |
-| 질문 검색 - AI 추천 | 기본 검색 상위 후보(최대 30건, 검색이 약하면 전체 목록을 이름·분야만으로)의 이름·분야·설명 요약·컬럼을 공용 무료 중계를 통해 Google Gemini API에 보내 추천 이유·관련도·활용 조합을 받음. 공용 한도 도달 시 본인 키 사용을 안내하며, 실패하면 기본 검색 결과로 전환 |
+| 질문 검색 - AI 추천 | 기본 검색 상위 후보(최대 30건, 검색이 약하면 전체 목록을 이름·분야만으로)의 이름·분야·설명 요약·컬럼을 공용 무료 중계를 통해 Anthropic Claude API(답하지 못하면 Google Gemini API)에 보내 추천 이유·관련도·활용 조합을 받음. 공용 한도 도달 시 본인 키 사용을 안내하며, 실패하면 기본 검색 결과로 전환 |
 
 ### AI 추천 설정
 
-- 모델: 공용 무료 AI는 Gemini 3.5 Flash-Lite(`gemini-3.5-flash-lite`)를 사용합니다. 본인 키로 전환하면 `data/site.json`의 `ai.gemini.models`에 있는 Gemini와 Gemma 4 31B(`gemma-4-31b-it`, 오픈 모델)를 고를 수 있습니다.
+- 모델: 공용 무료 AI는 Claude Haiku 5.5(`claude-haiku-5-5`)를 먼저, 답하지 못하면 Gemini 3.5 Flash-Lite(`gemini-3.5-flash-lite`)를 사용합니다. Claude는 운영 조직의 Claude 구독 플랜에 포함된 월 API 크레딧 안에서만 호출합니다. 본인 키로 전환하면 `data/site.json`의 `ai.gemini.models`에 있는 Gemini와 Gemma 4 31B(`gemma-4-31b-it`, 오픈 모델)를 고를 수 있습니다.
 - 개인 키: 화면의 ‘Gemini API 키’ 칸에 입력하며 이 페이지의 메모리에서만 쓰고 저장하지 않습니다. 소스·데이터·문서에 키를 넣지 않습니다. 본인 프로젝트의 한도·요금이 적용됩니다.
-- 공용 무료 AI: `ai.gemini.shared.url`과 Turnstile 공개 사이트 키를 연결해 키 없이 먼저 이용하고, 공용 한도에 도달했을 때 본인 키로 계속할 수 있습니다. 공용 키와 이용 확인(Turnstile) Secret은 서버(Cloudflare Worker Secret)에만 둡니다. 현재 운영 화면은 공용 중계(Cloudflare Workers 무료 플랜)에 연결되어 있으며, 주소를 비우면 본인 키 방식으로 동작합니다. 중계 서버(`server/shared-ai-worker.js`)는 이용 확인 토큰 검증, 허용 출처, IP당 분당 5회, 요청 크기·처리 시간 제한을 적용합니다. Google이 일시 과부하(500·503)를 돌려주면 중계 서버가 2번 더 시도하고(1초·2.5초 뒤), 그래도 실패하면 화면이 ‘혼잡’으로 안내하고 기본 검색 결과를 보여 줍니다(본인 키로 직접 부를 때는 503을 1번 다시 시도). 공용 무료 한도는 Google 무료 등급 한도로, 프로젝트 전체가 함께 씁니다. 연결 절차는 [배포 안내](DEPLOYMENT.md)를 참고하세요.
+- 공용 무료 AI: `ai.gemini.shared.url`과 Turnstile 공개 사이트 키를 연결해 키 없이 먼저 이용하고, 공용 한도에 도달했을 때 본인 키로 계속할 수 있습니다. 공용 키와 이용 확인(Turnstile) Secret은 서버(Cloudflare Worker Secret)에만 둡니다. 현재 운영 화면은 공용 중계(Cloudflare Workers 무료 플랜)에 연결되어 있으며, 주소를 비우면 본인 키 방식으로 동작합니다. 중계 서버(`server/shared-ai-worker.js`)는 이용 확인 토큰 검증, 허용 출처, IP당 분당 5회, 요청 크기·처리 시간 제한을 적용합니다. Claude 크레딧이 소진되거나 20초 안에 답하지 못하는 등 오류가 나면 같은 질문을 Gemini에 묻습니다. Google이 일시 과부하(500·503)를 돌려주면 중계 서버가 2번 더 시도하고(1초·2.5초 뒤), 그래도 실패하면 화면이 ‘혼잡’으로 안내하고 기본 검색 결과를 보여 줍니다(본인 키로 직접 부를 때는 503을 1번 다시 시도). 공용 무료 한도는 Google 무료 등급 한도로, 프로젝트 전체가 함께 씁니다. 연결 절차는 [배포 안내](DEPLOYMENT.md)를 참고하세요.
 - 교체: 같은 서비스의 다른 모델은 `ai.gemini.models` 에 추가, 다른 서비스는 `src/ai/providers/` 에 같은 형태의 파일을 추가합니다. 자세한 내용은 [docs/AI_FEATURE.md](docs/AI_FEATURE.md).
 - 기관 AI 서버 연결 규격(운영하지 않음): 요청 `{ question, candidates }` → 응답 `{ summary, recommendations[{ no, relevance, reason }], combinations[{ title, nos, idea }] }`. 참조 구현은 `scripts/ai-gateway.mjs` 이며 `ai.modes` 에 `gateway` 를 켜고 서버 주소를 넣어야 동작합니다.
-- 모델 선택 기준: 결제를 연결하지 않은 Google 무료 프로젝트로 공용 무료 호출을 운영할 수 있고, 한도에 도달하면 이용자가 무료로 발급받는 개인 키 하나로 오픈 모델(Gemma)까지 고를 수 있는 Gemini API를 택했습니다. 다른 서비스로 바꾸는 구조와 이력은 [docs/AI_FEATURE.md](docs/AI_FEATURE.md)에 있습니다.
+- 모델 선택 기준: 결제를 연결하지 않은 Google 무료 프로젝트로 공용 무료 호출을 운영할 수 있고, 한도에 도달하면 이용자가 무료로 발급받는 개인 키 하나로 오픈 모델(Gemma)까지 고를 수 있는 Gemini API를 택했습니다. 여기에 Claude 구독 플랜의 월 API 크레딧으로 Claude를 먼저 쓰게 했고(2026-10-15), 크레딧을 넘는 결제는 일어나지 않게 운영합니다. 다른 서비스로 바꾸는 구조와 이력은 [docs/AI_FEATURE.md](docs/AI_FEATURE.md)에 있습니다.
 
 ## 검증 결과
 

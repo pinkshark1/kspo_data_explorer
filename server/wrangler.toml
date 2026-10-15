@@ -5,9 +5,12 @@ workers_dev = true
 preview_urls = false
 
 # 실제 공개 화면 Origin은 배포할 때 지정한다. API 키는 vars에 쓰지 않는다.
+# ANTHROPIC_CREDITS_ONLY_CONFIRMED는 Console 조직에 구매 크레딧이 없고 자동 충전이 꺼져 있음을 확인한 뒤에만 true로 둔다.
+# true이고 Secret ANTHROPIC_API_KEY가 있으면 Claude를 먼저 쓰고, 아니면 Gemini만 쓴다.
 [vars]
 AI_ALLOWED_ORIGINS = ""
 GEMINI_FREE_TIER_CONFIRMED = "false"
+ANTHROPIC_CREDITS_ONLY_CONFIRMED = "false"
 
 # 인당 짧은 시간의 연속 요청만 제한한다. 전체 무료 한도는 Google 프로젝트가 적용한다.
 # namespace_id는 같은 Cloudflare 계정의 다른 제한과 겹치지 않게 지정한다.

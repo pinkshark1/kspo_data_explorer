@@ -57,6 +57,7 @@ npm run check:security && npm run check:http    # 공개 범위·인증정보·H
 5. 실제 `/healthz`를 확인한 뒤 검수용 화면의 `data/site.json`에서 `ai.gemini.shared.url`에 HTTPS `/recommend` 주소, `ai.gemini.shared.turnstileSiteKey`에 공개 사이트 키를 넣고 `ai.defaultMode`를 `gemini`로 변경합니다. 등록한 호스트에서 이용 확인과 실제 추천을 확인한 뒤 운영 설정에 반영합니다. url이 비어 있으면 공용 기능을 켜지 않습니다. CSP가 있다면 아래 안내에 따라 중계 주소와 Turnstile을 허용합니다. (현재 운영 화면은 2026-10-13에 이 절차로 연결했습니다.)
 6. `npm run build`, `npm run check:data`, `npm run check:ui`, `npm run check:search`, `npm run check:ai`, `npm run check:shared-ai`, `npm run check:security`를 실행하고 화면을 반영합니다. 실제 무료 한도를 고의로 소진하지 말고 모의 429 응답으로 개인 키 전환을 검증합니다.
 7. `server/shared-ai-worker.js`를 고친 경우(예: 503 재시도 추가) 화면 반영과 별도로 4단계의 `npx wrangler deploy` 명령(Origin·확인값 지정 포함)으로 Worker를 다시 배포하고 `/healthz`와 실제 질문 1건을 확인합니다. GitLab `main` 반영만으로는 Worker가 갱신되지 않습니다.
+8. (선택) Claude 우선 사용: Claude 구독 플랜(Max·Team)의 월 API 크레딧을 받는 Anthropic Console 조직의 Billing 화면에서 구매한 크레딧이 없고 자동 충전이 꺼져 있는지 확인합니다. 그 조직에서 API 키를 발급해 `npx wrangler secret put ANTHROPIC_API_KEY --config server/wrangler.toml`의 입력 프롬프트로 등록하고, 4단계 배포 명령에 `--var ANTHROPIC_CREDITS_ONLY_CONFIRMED:true`를 더합니다(재배포 때마다 지정). 키를 PC의 전역 환경변수로 두지 않습니다. 같은 이름을 읽는 다른 개발 도구가 이 키를 쓰게 됩니다. 반영 후 실제 질문 1건의 응답 헤더 `X-AI-Provider`가 `claude`인지 브라우저 개발자 도구에서 확인합니다. 끌 때는 확인값을 `false`로 다시 배포하고, `data/site.json`의 `ai.gemini.shared.name`·`target`을 지워 화면 안내를 Gemini로 되돌립니다.
 
 Cloudflare의 무료 요청·CPU 한도에 들어가는지 확인하고, 무료 요금제를 유지합니다. Worker에서 원문 요청·API 키를 로그에 쓰지 않습니다. `.dev.vars*`와 `.wrangler/`는 로컬 설정으로 Git에서 제외합니다. 자세한 흐름과 한도 구분은 [질문 검색 안내](docs/AI_FEATURE.md#공용-무료-ai--본인-키-전환)를 참고하세요.
 
@@ -108,7 +109,7 @@ Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'
 - 관계도 노드 선택, 확대·축소(휠·버튼·두 손가락), 이동이 동작하는지
 - ‘사용방법’ 화면에서 영상이 재생되는지
 - ‘질문 검색’에서 예시 질문이 결과를 내는지(저장된 AI 예시는 외부 요청 없이)
-- (공용 무료 AI를 켠 경우) 키 없이 새 질문에 이용 확인이 통과하고 추천이 나오는지, Worker `/healthz`가 정상인지, 한도·혼잡 안내와 ‘내 키로 계속하기’·기본 검색 전환이 동작하는지(한도는 모의 응답으로 확인), 공용 키 프로젝트에 결제가 연결되지 않았는지
+- (공용 무료 AI를 켠 경우) 키 없이 새 질문에 이용 확인이 통과하고 추천이 나오는지, Worker `/healthz`가 정상인지, 한도·혼잡 안내와 ‘내 키로 계속하기’·기본 검색 전환이 동작하는지(한도는 모의 응답으로 확인), 공용 키 프로젝트에 결제가 연결되지 않았는지, Claude를 켰다면 응답 헤더 `X-AI-Provider`가 `claude`이고 Console 조직에 구매 크레딧·자동 충전이 없는지
 - 모바일(폭 360~390px)에서 상단 메뉴가 잘리지 않고 가로 스크롤이 생기지 않는지
 - 개발자 도구에 404, JSON 파싱 오류, CSP 차단 오류가 없는지
 - `data/explorer-data.json`이 외부에서 직접 조회 가능한 공개 데이터 범위인지, 관계도에 나오는 정보시스템 이름이 공개 범위에 맞는지

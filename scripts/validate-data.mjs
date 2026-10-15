@@ -164,7 +164,11 @@ if (site.ai?.enabled) {
       const local = sharedUrl.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(sharedUrl.hostname);
       if (!(sharedUrl.protocol === "https:" || local) || sharedUrl.username || sharedUrl.password || sharedUrl.search || sharedUrl.hash) throw new Error("invalid");
       if (!ai.gemini.shared.turnstileSiteKey?.trim()) errors.push("공용 무료 AI에는 ai.gemini.shared.turnstileSiteKey(공개 사이트 키)가 필요합니다.");
-      info.push("공용 무료 Gemini 중계 사용 — 한도 도달 시 이용자 본인 키 입력 안내");
+      for (const field of ["name", "target"]) {
+        const value = ai.gemini.shared[field];
+        if (value !== undefined && (typeof value !== "string" || !value.trim())) errors.push(`site.json ai.gemini.shared.${field} 는 비어 있지 않은 글자여야 합니다(쓰지 않으면 Gemini로 표시).`);
+      }
+      info.push(`공용 무료 AI 중계 사용(${ai.gemini.shared.name ?? "Gemini"}) — 한도 도달 시 이용자 본인 키 입력 안내`);
     } catch {
       errors.push("site.json ai.gemini.shared.url 은 인증정보·쿼리·해시 없는 HTTPS 주소여야 합니다(개발용 localhost 제외).");
     }

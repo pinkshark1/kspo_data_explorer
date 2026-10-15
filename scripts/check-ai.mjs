@@ -4,8 +4,8 @@
 //   2) 브라우저의 Gemini 직접 호출: 헤더·본문 형식(설정된 모델 기준), 결과 표시, 오류별 안내, 키 비저장, 취소·최신 질문 우선
 //   3) 브라우저의 기관 AI 서버 호출: 요청 본문, 결과 표시, 거절 처리
 //   4) 브라우저의 공용 무료 AI 호출: 키 없이 호출, 이용 확인, 한도 종류별 안내, ‘내 키로 계속하기’ 전환, 혼잡·서버 오류 구분, 기본 검색 전환
-//   (중계 서버 자체는 npm run check:shared-ai 가 점검한다)
-//   화면에 보이는 검색 방식은 ‘기본 검색’과 ‘AI 추천 (Gemini)’ 뿐이다. (Claude·GPT 는 화면에서 뺐다)
+//   (중계 서버 자체와 중계가 먼저 부르는 Claude 는 npm run check:shared-ai 가 점검한다)
+//   화면에 보이는 검색 방식은 ‘기본 검색’과 ‘AI 추천’ 두 가지다. 본인 키로 고르는 AI 는 Gemini 뿐이다. (Claude·GPT 개인 키 입력은 화면에서 뺐다)
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -374,9 +374,10 @@ async function askGeminiMode(page, question = "체육시설 안전과 연계할 
 
 // 공용 키는 서버에만 있다. 이 점검에서도 실제 공용 서버·Google API를 호출하지 않는다.
 const SHARED_URL = "https://shared-ai.test/recommend";
+// 표시 이름·전송 대상(name, target)은 운영 설정 그대로 쓰고 주소·사이트 키만 모의 값으로 바꾼다.
 const enableShared = (site) => {
   site.ai.defaultMode = "gemini";
-  site.ai.gemini.shared = { url: SHARED_URL, turnstileSiteKey: "mock-public-site-key" };
+  site.ai.gemini.shared = { ...shippedAi.gemini.shared, url: SHARED_URL, turnstileSiteKey: "mock-public-site-key" };
 };
 async function mockShared(page, calls, handler) {
   await page.route("https://shared-ai.test/**", async (route) => {
@@ -407,6 +408,9 @@ async function checkSharedBrowser(browser, base) {
     const calls = [];
     await mockShared(page, calls, () => ({}));
     check("[공용 AI] 처음에는 공용 AI가 선택되고 키·모델 입력을 요구하지 않는다", await page.locator('input[value="gemini"]').isChecked() && (await page.locator("#ask-api-key, #ask-model").count()) === 0);
+    const sharedName = shippedAi.gemini.shared.name || "Gemini";
+    const sharedTarget = shippedAi.gemini.shared.target || "Google(Gemini)";
+    check("[공용 AI] 검색 방식 이름과 전송 대상 안내가 공용 중계가 쓰는 AI(설정의 name·target)를 표시한다", (await page.locator('input[value="gemini"] + span b').innerText()) === `AI 추천 (${sharedName})` && (await page.locator(".ask-privacy").innerText()).includes(`공용 무료 AI 서버와 ${sharedTarget}`), `${sharedName} / ${sharedTarget}`);
     await submitShared(page);
     await page.waitForSelector(".ask-badge");
     const call = calls[0];

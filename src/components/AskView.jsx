@@ -23,10 +23,12 @@ function availableModes(ai) {
   const modes = [{ id: "local", label: "기본 검색", hint: "AI 없이 이 브라우저 안에서 질문 속 낱말과 비슷한 말로 찾습니다(외부 요청 없음)." }];
   for (const [id, info] of Object.entries(KEY_MODES)) {
     if (wanted.includes(id) && ai[id]) {
-      const hint = sharedGeminiUrl(ai[id])
+      const shared = !!sharedGeminiUrl(ai[id]);
+      const hint = shared
         ? "공용 무료 AI가 질문을 읽고 추천 이유와 데이터 조합을 알려 줍니다. 공용 이용 한도에 도달하면 본인의 Gemini API 키로 계속 이용할 수 있습니다."
         : `Google AI가 질문을 읽고 추천 이유와 함께 쓸 데이터 조합까지 알려 줍니다. 본인의 ${info.keyLabel}(무료 발급)가 필요합니다.`;
-      modes.push({ id, label: `AI 추천 (${info.name})`, hint });
+      // 공용 중계가 Claude를 먼저 쓰면 site.json 의 shared.name 으로 실제 쓰는 AI를 표시한다.
+      modes.push({ id, label: `AI 추천 (${(shared && ai[id].shared.name) || info.name})`, hint });
     }
   }
   if (wanted.includes("gateway") && ai.gateway?.url) {
@@ -269,7 +271,7 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
 
   const modeInfo = modes.find((entry) => entry.id === mode);
   const isAi = mode !== "local";
-  const sendTarget = sharedEnabled && !usePersonalKey ? "공용 무료 AI 서버와 Google(Gemini)" : keyMode ? keyMode.target : ai.gateway?.label || "기관 AI 서버";
+  const sendTarget = sharedEnabled && !usePersonalKey ? `공용 무료 AI 서버와 ${ai.gemini.shared.target || "Google(Gemini)"}` : keyMode ? keyMode.target : ai.gateway?.label || "기관 AI 서버";
   const loading = status === "loading";
 
   return (
