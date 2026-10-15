@@ -243,15 +243,16 @@ npm start                     # http://localhost:4173 (종료: Ctrl+C)
 
 | 검증 항목 | 실행 환경·모델 | 확인일 | 결과 | 증빙 위치 |
 |---|---|---|---|---|
-| 데이터 점검 (`check:data`) | Node.js 24 · Windows 11 | 2026-10-13 | 오류 0건 · 경고 0건 (192건) | [2026-10-13-checks.md](docs/evidence/2026-10-13-checks.md) |
-| 화면 점검 (`check:ui`) | Chrome(헤드리스) · 데스크톱 1440px, 모바일 390·360px | 2026-10-13 | 49/49 통과 | 같은 파일 |
-| 질문 검색 품질 (`check:search`) | AI 없음 (기본 검색) · 개발자가 작성한 질문 39개 | 2026-10-13 | 상위 5건 적중률 100% · 상위 10건 재현율 97% | 같은 파일 |
-| AI 경로 (`check:ai`) | 모의 서버 (실제 호출 없음) · 공용 무료 AI·내 키 전환·혼잡·키 비저장 포함 | 2026-10-13 | 145/145 통과 | 같은 파일 |
-| 공용 무료 AI 중계 (`check:shared-ai`) | 중계 서버 코드 · 모의 Google·Turnstile 응답 (실제 호출 없음) | 2026-10-13 | 18/18 통과 | 같은 파일 |
-| 공개 파일 보안 (`check:security`) · AI 요청 처리 (`check:http`) | Node.js 24 · Git 추적 파일·배포 폴더 / 모의 응답 (외부 호출 없음) | 2026-10-13 | `PASS security checks`(텍스트가 아닌 13건은 내용 검사 제외) · `PASS HTTP: 취소 시 전송 0회, 정상 응답, 외부 오류 본문 비노출` | 실행 출력 (기록 파일 없음). `check:security`는 GitLab CI가 GitHub 동기화 전에 자동 실행 |
+| 데이터 점검 (`check:data`) | Node.js 24 · Windows 11 | 2026-10-15 | 오류 0건 · 경고 0건 (192건) | [2026-10-15-checks.md](docs/evidence/2026-10-15-checks.md) |
+| 화면 점검 (`check:ui`) | Chrome(헤드리스) · 데스크톱 1440px, 모바일 390·360px | 2026-10-15 | 49/49 통과 | 같은 파일 |
+| 질문 검색 품질 (`check:search`) | AI 없음 (기본 검색) · 개발자가 작성한 질문 39개 | 2026-10-15 | 상위 5건 적중률 100% · 상위 10건 재현율 97% | 같은 파일 |
+| AI 경로 (`check:ai`) | 모의 서버 (실제 호출 없음) · 공용 무료 AI·내 키 전환·혼잡·키 비저장 포함 | 2026-10-15 | 146/146 통과 | 같은 파일 |
+| 공용 무료 AI 중계 (`check:shared-ai`) | 중계 서버 코드 · 모의 Anthropic·Google·Turnstile 응답 (실제 호출 없음) · Claude 우선 호출·Gemini 전환 포함 | 2026-10-15 | 27/27 통과 | 같은 파일 |
+| 공개 파일 보안 (`check:security`) · AI 요청 처리 (`check:http`) | Node.js 24 · Git 추적 파일·배포 폴더 / 모의 응답 (외부 호출 없음) | 2026-10-15 | `PASS security checks`(텍스트가 아닌 13건은 내용 검사 제외) · `PASS HTTP: 취소 시 전송 0회, 정상 응답, 외부 오류 본문 비노출` | 실행 출력 (기록 파일 없음). `check:security`는 GitLab CI가 GitHub 동기화 전에 자동 실행 |
 | 기본 검색 · AI 실패 전환 비교 (`compare:ai`) | 예시 질문 5개 · 모의 오류(한도 초과·잘못된 키) | 2026-10-02 | 실패 시 두 경우 모두 기본 검색 8건으로 전환 | [docs/evidence](docs/evidence/) `*-ai-compare.md` |
 | AI 추천 실제 호출 (`probe:ai`·`compare:ai`) | Google Gemini API · `gemini-3.5-flash-lite`, `gemma-4-31b-it` | 2026-10-06 | 예시 질문 5개 비교: Flash-Lite 5/5 응답(평균 3.5초), Gemma 4/5 응답(평균 78.7초, 1건은 Google 쪽 500·503·시간 초과로 실패해 기본 검색으로 전환). 추천 이유 51개 모두에 그 데이터의 설명·컬럼과 같은 낱말이 있음(낱말 대조이며 품질 평가는 아님). 모델 점검(10-02): 두 모델 모두 응답 | [ai-compare](docs/evidence/2026-10-06-ai-compare.md) · [ai-probe](docs/evidence/2026-10-02-ai-probe.txt) |
-| 공용 무료 AI 실제 호출 | 공개 화면 · 키 입력 없음 · 공용 중계(Cloudflare Workers) · `gemini-3.5-flash-lite` | 2026-10-13 | 재시도 보완 전 5번 호출 중 3번 추천 응답, 2번 실패(1번은 Google 503 일시 과부하 확인)해 기본 검색으로 전환. 중계 서버에 500·503 2회 재시도와 ‘혼잡’ 안내를 추가한 뒤 다시 호출해 추천 4건 응답 | [2026-10-13-shared-ai-live](docs/evidence/2026-10-13-shared-ai-live.md) |
+| 공용 무료 AI 실제 호출 (Gemini) | 공개 화면 · 키 입력 없음 · 공용 중계(Cloudflare Workers) · `gemini-3.5-flash-lite` | 2026-10-13 | 재시도 보완 전 5번 호출 중 3번 추천 응답, 2번 실패(1번은 Google 503 일시 과부하 확인)해 기본 검색으로 전환. 중계 서버에 500·503 2회 재시도와 ‘혼잡’ 안내를 추가한 뒤 다시 호출해 추천 4건 응답 | [2026-10-13-shared-ai-live](docs/evidence/2026-10-13-shared-ai-live.md) |
+| 공용 무료 AI 실제 호출 (Claude) | 공개 화면 · 키 입력 없음 · 공용 중계(Cloudflare Workers) · `claude-haiku-5-5` | 2026-10-15 | 증빙용 질문 2번 모두 Claude가 응답(`X-AI-Provider: claude`, 중계 응답 5.7·6.9초, 질문부터 결과 표시까지 9.5·21.3초, 추천 6·8건). 10-13과 같은 질문에서 Gemini가 고른 4건이 모두 포함됨. 이용 확인 실패 원인을 찾으며 17번 질문: Claude 응답 9번, 이용 확인(Turnstile) 간헐 실패 8번은 중계 서버를 부르기 전에 기본 검색으로 전환(원인 미확인). Claude 실패 시 Gemini 전환은 모의 응답으로만 검증 | [2026-10-15-shared-ai-live](docs/evidence/2026-10-15-shared-ai-live.md) |
 | 다른 기관 데이터 이식 | 대한체육회 공공데이터포털 개방 데이터 23건 | 2026-10-02 | 기관별 화면 코드 수정 없이(처음 이식할 때 KSPO 고정 문구를 설정값으로 정리) 데이터 점검 오류 0건 · 화면 점검 14/14 | [examples/korea-sports-council](examples/korea-sports-council/README.md) |
 | 행정안전부 AI 공통기반 구동 | - | - | 하지 않음 (접속 환경 없음). 같은 응답 규격의 기관 AI 서버 참조 구현(`scripts/ai-gateway.mjs`)이 있어 공통기반 모델로 옮길 수 있는 구조 | [docs/AI_FEATURE.md](docs/AI_FEATURE.md) |
 | 소규모 사전 사용성 점검 | 직원 3~5명 · 과제 3개 × 2방식 (계획) | - | 측정하지 않음 (절차·과제·정답표만 마련) | [docs/EFFECT_MEASUREMENT.md](docs/EFFECT_MEASUREMENT.md) |
