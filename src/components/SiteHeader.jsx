@@ -1,9 +1,11 @@
+import KeywordSearch from "./KeywordSearch.jsx";
+
 const NAV_ITEMS = [
-  { id: "guide", label: "사용방법" },
   { id: "explorer", label: "데이터 탐색" },
-  { id: "ask", label: "질문 검색" },
+  { id: "ask", label: "AI 질문 검색" },
   { id: "map", label: "관계도" },
   { id: "ideas", label: "연계 아이디어" },
+  { id: "guide", label: "사용방법" },
 ];
 
 // 상단 안내띠 + 로고 + 주요 메뉴 + 전체 검색
@@ -16,6 +18,7 @@ export default function SiteHeader({ site, view, onChangeView, onGoHome, query, 
     .map((item) => (item.id === "ask" ? { ...item, label: site.ai?.navLabel ?? item.label } : item));
   // 로고 글자: organization.mark 가 없으면 약칭의 첫 글자 (KSPO → K)
   const mark = site.organization.mark || site.organization.shortName.slice(0, 1);
+  const hasContentSearch = view === "explorer" || view === "ask";
   return (
     <>
       <a className="skip-link" href="#main-content">
@@ -29,7 +32,7 @@ export default function SiteHeader({ site, view, onChangeView, onGoHome, query, 
           <p>{site.service.bannerText}</p>
         </div>
       </div>
-      <header className="topbar">
+      <header className={`topbar${hasContentSearch ? " explorer-topbar" : ""}`}>
         <button className="brand" onClick={onGoHome} aria-label="데이터 탐색 홈">
           <span className="brand-mark">{mark}</span>
           <span className="brand-copy">
@@ -49,16 +52,7 @@ export default function SiteHeader({ site, view, onChangeView, onGoHome, query, 
             </button>
           ))}
         </nav>
-        <form className="global-search" role="search" onSubmit={onSubmitSearch}>
-          <span aria-hidden="true">⌕</span>
-          <input
-            value={query}
-            onChange={(event) => onChangeQuery(event.target.value)}
-            placeholder="찾으시는 데이터가 있나요?"
-            aria-label="전체 데이터 검색"
-          />
-          <button type="submit">검색</button>
-        </form>
+        {!hasContentSearch && <KeywordSearch query={query} onChangeQuery={onChangeQuery} onSubmitSearch={onSubmitSearch} />}
       </header>
     </>
   );

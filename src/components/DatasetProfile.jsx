@@ -101,61 +101,49 @@ export default function DatasetProfile({
         </div>
       </header>
 
-      <section className="summary-cards">
-        <article>
-          <span className="summary-icon calendar">□</span>
-          <div>
-            <small>업데이트 주기</small>
-            <strong>{cycleLabel(dataset.cycle)}</strong>
-          </div>
-        </article>
-        <article>
-          <span className="summary-icon database">◎</span>
-          <div>
-            <small title="이 데이터를 만들거나 관리하는 공단의 업무시스템">만든 곳(업무시스템)</small>
-            <strong>{dataset.sys}</strong>
-          </div>
-        </article>
-        <article>
-          <span className="summary-icon rows">▦</span>
-          <div>
-            <small>데이터 항목(컬럼)</small>
-            <strong>{detail.hasColumns ? `${detail.columns.length}개` : "포털에 항목 설명 없음"}</strong>
-          </div>
-        </article>
-      </section>
-
-      <div className="quality-strip">
-        <span>ⓘ</span>
-        {detail.hasColumns ? (
-          <>
-            <p>
-              <b>{detail.portalName} 공식 메타데이터를 반영했습니다.</b> {qualityMessage}
-            </p>
-            <em>{qualityTag}</em>
-          </>
-        ) : (
-          <>
-            <p>
-              <b>포털에서 컬럼 정의서를 제공하지 않는 데이터입니다.</b> 확인되지 않은 컬럼명은 임의로 만들지 않았습니다.
-            </p>
-            <em>정의서 미제공</em>
-          </>
-        )}
+      <div className="profile-facts" aria-label="데이터 요약">
+        <span>업데이트 <b>{cycleLabel(dataset.cycle)}</b></span>
+        <span>항목 <b>{detail.hasColumns ? `${detail.columns.length}개` : "포털 설명 없음"}</b></span>
+        <span>{dataset.ptype}</span>
       </div>
-
-      <MetaStrip rows={infoRows} portalName={portalInfo.label} fetchedAt={metaFetchedAt} />
 
       <nav className="profile-tabs" aria-label="데이터 상세 메뉴">
         {tabs.map((item) => (
-          <button key={item.id} className={activeTab === item.id ? "active" : ""} onClick={() => onChangeTab(item.id)}>
+          <button key={item.id} className={activeTab === item.id ? "active" : ""} aria-current={activeTab === item.id ? "page" : undefined} onClick={() => onChangeTab(item.id)}>
             {item.label}
             {tabCount[item.id] != null && <small>{tabCount[item.id]}</small>}
           </button>
         ))}
       </nav>
 
-      {activeTab === "summary" && <OverviewPanel dataset={dataset} detail={detail} onOpenTab={onChangeTab} />}
+      {activeTab === "summary" && (
+        <>
+          <OverviewPanel dataset={dataset} detail={detail} onOpenTab={onChangeTab} />
+          <section className="profile-information" aria-label="출처와 이용 정보">
+            <p className="source-system">만든 곳(업무시스템) <strong>{dataset.sys}</strong></p>
+            <div className="quality-strip">
+              <span>ⓘ</span>
+              {detail.hasColumns ? (
+                <>
+                  <p>
+                    <b>{detail.portalName} 공식 메타데이터를 반영했습니다.</b> {qualityMessage}
+                  </p>
+                  <em>{qualityTag}</em>
+                </>
+              ) : (
+                <>
+                  <p>
+                    <b>포털에서 컬럼 정의서를 제공하지 않는 데이터입니다.</b> 확인되지 않은 컬럼명은 임의로 만들지 않았습니다.
+                  </p>
+                  <em>정의서 미제공</em>
+                </>
+              )}
+            </div>
+
+            <MetaStrip rows={infoRows} portalName={portalInfo.label} fetchedAt={metaFetchedAt} />
+          </section>
+        </>
+      )}
       {activeTab === "tables" && <TablesPanel detail={detail} onOpenTab={onChangeTab} />}
       {activeTab === "columns" && <ColumnsPanel detail={detail} />}
       {activeTab === "sample" && <SamplePanel detail={detail} onChangeOperation={onChangeOperation} />}

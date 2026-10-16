@@ -80,20 +80,27 @@ export default function App({ data }) {
   };
 
   const changeQuery = (value) => {
+    // 다른 메뉴에서는 입력·한글 조합을 유지하고 검색을 제출하면 탐색으로 이동한다.
     updateSearch(value, filters, ideaFilter);
-    setView("explorer");
+  };
+
+  const changeView = (nextView) => {
+    setView(nextView);
+    window.scrollTo({ top: 0 });
   };
 
   const submitSearch = (event) => {
     event.preventDefault();
     setView("explorer");
-    if (query.trim() && results[0]) {
+    if (view !== "explorer" && query.trim() && results[0]) {
       setSelected(results[0]);
       setTab("summary");
       setOperationPath("");
     }
     requestAnimationFrame(() => {
-      document.getElementById("main-content")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const heading = document.getElementById("dataset-results-heading");
+      heading?.focus({ preventScroll: true });
+      heading?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   };
 
@@ -138,7 +145,7 @@ export default function App({ data }) {
       <SiteHeader
         site={site}
         view={view}
-        onChangeView={setView}
+        onChangeView={changeView}
         onGoHome={goHome}
         query={query}
         onChangeQuery={changeQuery}
@@ -153,6 +160,8 @@ export default function App({ data }) {
           exampleQuestions={site.ai?.exampleQuestions ?? []}
           onAsk={askFromHome}
           query={query}
+          onChangeQuery={changeQuery}
+          onSubmitSearch={submitSearch}
           onClearQuery={() => updateSearch("", filters, ideaFilter)}
           totalCount={datasets.length}
           categories={categories}

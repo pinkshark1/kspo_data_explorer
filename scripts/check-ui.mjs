@@ -70,8 +70,7 @@ try {
   const total = await desktop.locator(".dataset-list button").count();
   check("데이터셋 목록이 표시된다", total > 100, `${total}건`);
 
-  const searchButton = await desktop.locator(".global-search button").boundingBox();
-  check("검색 버튼 글자가 한 줄로 보인다(데스크톱)", searchButton.height <= 56 && searchButton.width >= 44, `${Math.round(searchButton.width)}x${Math.round(searchButton.height)}`);
+  check("키워드 검색에는 중복 실행 버튼 없이 즉시 필터 안내가 있다", await desktop.locator('.global-search button[type="submit"]').count() === 0 && (await desktop.locator("#home-search-help").innerText()).includes("아래 목록이 바로 좁혀집니다"));
 
   const cycleOptions = await desktop.locator(".filter-fields label").nth(3).locator("option").allInnerTexts();
   check("업데이트 주기 필터에 영문/한글 중복 표기가 없다", !cycleOptions.some((text) => /Yearly|Monthly|연간/.test(text)) && new Set(cycleOptions.map((text) => text.replace(/\s*\(\d+\)/, ""))).size === cycleOptions.length, cycleOptions.join(" / "));
@@ -81,13 +80,14 @@ try {
   check("검색어를 바꾸면 목록의 선택 항목과 상세 제목이 일치한다", (await desktop.locator(".profile-header h1").innerText()) === selectedTitle);
   await desktop.press(".global-search input", "Enter");
   await desktop.waitForTimeout(300);
+  check("키워드 입력 후 Enter는 데이터 목록으로 초점을 옮긴다", await desktop.evaluate(() => document.activeElement?.id === "dataset-results-heading"));
   const fitnessCount = await desktop.locator(".dataset-list button").count();
   check("검색어 ‘체력’ 결과가 나온다", fitnessCount > 0, `${fitnessCount}건`);
   await desktop.fill(".global-search input", "zzzz없는단어");
   await desktop.waitForTimeout(200);
   check("검색 결과가 없으면 안내 문구가 나온다", (await desktop.locator(".empty-list").count()) === 1);
   check("검색 결과가 없으면 이전 데이터 상세와 원문 링크를 숨긴다", (await desktop.locator(".profile-header, .profile .request-button").count()) === 0);
-  check("검색 결과가 없으면 검색어를 보여 주고 질문 검색·지우기 버튼을 준다", (await desktop.locator(".empty-list").innerText()).includes("zzzz없는단어") && (await desktop.locator(".empty-list button").count()) === 2 && (await desktop.locator(".query-chip").count()) === 1);
+  check("검색 결과가 없으면 검색어를 보여 주고 AI 질문 검색·지우기 버튼을 준다", (await desktop.locator(".empty-list").innerText()).includes("zzzz없는단어") && (await desktop.locator(".empty-list button").count()) === 2 && (await desktop.locator(".query-chip").count()) === 1);
   await desktop.locator(".empty-list button", { hasText: "지우기" }).click();
   check("‘조건·검색어 지우기’를 누르면 검색어까지 지워진다", (await desktop.inputValue(".global-search input")) === "" && (await desktop.locator(".dataset-list button").count()) > 100);
   await desktop.locator(".filter-fields select").nth(2).selectOption("API");
@@ -95,14 +95,26 @@ try {
   await desktop.getByRole("button", { name: "조건 초기화", exact: true }).click();
   await desktop.locator(".dataset-list button").first().click();
 
-  // 첫 화면 소개: 질문을 입력하면 질문 검색으로 넘어가 바로 찾는다
-  check("첫 화면에 서비스 소개와 질문 입력이 있다", (await desktop.locator(".home-intro h2").count()) === 1 && (await desktop.locator("#home-question").count()) === 1);
-  await desktop.fill("#home-question", "체육시설 안전 데이터");
-  await desktop.locator(".home-ask button").click();
+  // 하나의 입력창으로 키워드 검색과 AI 질문 검색을 모두 시작한다.
+  check("첫 화면의 검색 입력창은 하나다", (await desktop.locator('.global-search input, #home-question').count()) === 1 && (await desktop.locator('[role="search"]').count()) === 1);
+  await desktop.fill(".global-search input", "체력");
+  const beforeQuestionCount = await desktop.locator(".dataset-list button").count();
+  await desktop.getByRole("radio", { name: "AI 질문 검색", exact: true }).check();
+  await desktop.fill(".global-search input", "체육시설 안전 데이터");
+  check("질문 작성 중에는 키워드 목록을 다시 필터링하지 않는다", await desktop.locator(".dataset-list button").count() === beforeQuestionCount && (await desktop.locator("#home-search-help").innerText()).includes("관련 데이터와 추천 이유"));
+  await desktop.getByRole("radio", { name: "키워드로 찾기", exact: true }).check();
+  check("방식을 전환해도 키워드와 질문 초안이 서로 섞이지 않는다", await desktop.inputValue(".global-search input") === "체력");
+  await desktop.getByRole("radio", { name: "AI 질문 검색", exact: true }).check();
+  check("질문 초안이 유지되고 추천 버튼의 용도가 명확하다", await desktop.inputValue(".global-search input") === "체육시설 안전 데이터" && await desktop.getByRole("button", { name: "추천받기", exact: true }).isVisible());
+  await desktop.locator(".search-ask").click();
   await desktop.waitForSelector(".ask-list .ask-item");
-  check("첫 화면에서 질문하면 질문 검색 결과가 나오고 어떤 질문의 결과인지 보인다", (await desktop.inputValue("#ask-question")) === "체육시설 안전 데이터" && (await desktop.locator(".ask-asked").innerText()).includes("체육시설 안전 데이터"));
+  check("첫 화면에서 질문하면 AI 질문 검색 결과가 나오고 어떤 질문의 결과인지 보인다", (await desktop.inputValue("#ask-question")) === "체육시설 안전 데이터" && (await desktop.locator(".ask-asked").innerText()).includes("체육시설 안전 데이터"));
+  check("AI 질문 검색 화면도 입력창 하나만 표시한다", (await desktop.locator('.global-search input, #ask-question').count()) === 1);
   await desktop.locator("button.brand").click();
   await desktop.waitForSelector(".dataset-list");
+  check("질문 후 홈으로 돌아오면 기존 키워드 조건이 유지된다", await desktop.inputValue(".global-search input") === "체력" && await desktop.locator(".dataset-list button").count() === beforeQuestionCount);
+  await desktop.getByRole("button", { name: "조건 초기화", exact: true }).click();
+  await desktop.locator(".dataset-list button").first().click();
   check("파일 데이터 상세에는 빈 ‘API 기능’ 탭이 없다", (await desktop.locator(".profile-tabs button", { hasText: "API 기능" }).count()) === 0);
 
   // 데이터 정보 + 원문 버튼
@@ -185,25 +197,32 @@ try {
   await desktop.locator("button.brand").click();
   check("로고(데이터 탐색 홈)를 누르면 아이디어 필터가 풀린다", (await desktop.locator(".idea-filter-notice").count()) === 0);
 
-  // 질문 검색(기본 검색: AI 호출 없음)
-  await navButton(desktop, "질문 검색").click();
+  // AI 질문 검색(기본 검색: AI 호출 없음)
+  await navButton(desktop, "AI 질문 검색").click();
   await desktop.waitForSelector(".ask-form");
   await desktop.locator('input[value="local"]').check();
   await desktop.locator(".ask-examples button").first().click();
   await desktop.waitForSelector(".ask-list .ask-item");
   const askCount = await desktop.locator(".ask-list .ask-item").count();
-  check("질문 검색: 예시 질문을 누르면 추천 데이터와 일치 이유가 나온다", askCount > 0 && (await desktop.locator(".ask-reason").first().innerText()).includes("낱말이 들어 있습니다"), `${askCount}건`);
+  check("AI 질문 검색: 예시 질문을 누르면 추천 데이터와 일치 이유가 나온다", askCount > 0 && (await desktop.locator(".ask-reason").first().innerText()).includes("낱말이 들어 있습니다"), `${askCount}건`);
   await desktop.fill("#ask-question", "오늘 날씨 어때");
   await desktop.getByRole("button", { name: "질문하기" }).click();
   await desktop.waitForSelector(".ask-result .metadata-empty");
-  check("질문 검색: 데이터와 관계없는 질문에는 찾지 못했다고 알린다", (await desktop.locator(".ask-result .ask-item").count()) === 0);
+  check("AI 질문 검색: 데이터와 관계없는 질문에는 찾지 못했다고 알린다", (await desktop.locator(".ask-result .ask-item").count()) === 0);
   await desktop.fill("#ask-question", "연구 보고서");
   await desktop.press("#ask-question", "Control+Enter");
   await desktop.waitForSelector(".ask-list .ask-item");
-  check("질문 검색: Ctrl+Enter 로도 질문할 수 있다", (await desktop.locator(".ask-list .ask-item").count()) > 0);
-  check("질문 검색: AI 방식을 고르기 전에는 별도 AI 파일을 내려받지 않고 외부로 요청하지 않는다", !requestedUrls.some((url) => /\/chunks\//.test(url)) && requestedUrls.every((url) => url.startsWith(base)));
+  check("AI 질문 검색: Ctrl+Enter 로도 질문할 수 있다", (await desktop.locator(".ask-list .ask-item").count()) > 0);
+  check("AI 질문 검색: AI 방식을 고르기 전에는 별도 AI 파일을 내려받지 않고 외부로 요청하지 않는다", !requestedUrls.some((url) => /\/chunks\//.test(url)) && requestedUrls.every((url) => url.startsWith(base)));
 
   // 관계도
+  await navButton(desktop, "사용방법").click();
+  check("다른 화면의 검색 버튼은 결과 보기로 목적을 알린다", await desktop.locator('.global-search button[type="submit"]').innerText() === "결과 보기");
+  await desktop.locator(".global-search input").pressSequentially("체육시설");
+  check("다른 메뉴에서도 검색어를 끝까지 입력할 수 있다", await desktop.inputValue(".global-search input") === "체육시설" && await desktop.locator(".guide-view").isVisible());
+  await desktop.locator(".global-search input").press("Enter");
+  check("검색을 제출하면 탐색 화면에 같은 검색어와 결과가 보인다", await desktop.inputValue(".global-search input") === "체육시설" && await desktop.locator(".dataset-list button").count() > 0);
+
   await navButton(desktop, "관계도").click();
   await desktop.waitForSelector(".graph-stage canvas");
   await desktop.waitForTimeout(1200);
@@ -236,6 +255,7 @@ try {
     watch(mobile, `mobile${width}`);
     await mobile.goto(`${base}/`, { waitUntil: "networkidle" });
     await mobile.waitForSelector(".dataset-list button");
+    check(`모바일 ${width}px: 검색 입력창은 하나다`, (await mobile.locator('.global-search input, #home-question').count()) === 1);
     const metrics = await mobile.evaluate(() => {
       const viewport = document.documentElement.clientWidth;
       const nav = [...document.querySelectorAll(".main-nav button")].map((button) => {
@@ -246,15 +266,37 @@ try {
         const lines = new Set([...range.getClientRects()].map((box) => Math.round(box.top))).size;
         return { text: button.innerText.trim(), right: rect.right, lines, clipped: button.scrollWidth > button.clientWidth + 1 };
       });
-      const search = document.querySelector(".global-search button").getBoundingClientRect();
-      const firstItem = document.querySelector(".dataset-list button").getBoundingClientRect();
-      return { viewport, scrollWidth: document.documentElement.scrollWidth, nav, search: { width: search.width, height: search.height }, firstItemTop: firstItem.top };
+      const firstItem = document.querySelector(".dataset-list").getBoundingClientRect();
+      return { viewport, scrollWidth: document.documentElement.scrollWidth, nav, firstItemTop: firstItem.top };
     });
     check(`모바일 ${width}px: 가로 스크롤이 없다`, metrics.scrollWidth <= metrics.viewport + 1);
     check(`모바일 ${width}px: 주요 메뉴가 잘리거나 줄바꿈되지 않는다`, metrics.nav.every((item) => item.right <= metrics.viewport + 1 && !item.clipped && item.lines === 1), metrics.nav.map((item) => `${item.text}:${Math.round(item.right)}`).join(" "));
-    check(`모바일 ${width}px: 검색 버튼 글자가 한 줄이다`, metrics.search.height < 60 && metrics.search.width >= 44, `${Math.round(metrics.search.width)}x${Math.round(metrics.search.height)}`);
+    check(`모바일 ${width}px: 즉시 필터 안내가 보이고 중복 검색 버튼은 없다`, await mobile.locator("#home-search-help").isVisible() && await mobile.locator(".global-search button").count() === 0);
     check(`모바일 ${width}px: 데이터 목록이 첫 화면(844px) 안에서 시작한다`, metrics.firstItemTop < 800, `top=${Math.round(metrics.firstItemTop)}px`);
 
+    // 접힌 상세 필터에서도 적용된 조건을 확인하고 해제할 수 있어야 한다.
+    const filterToggle = mobile.getByRole("button", { name: /상세 필터/ });
+    const canToggleFilters = await filterToggle.count() === 1;
+    check(`모바일 ${width}px: 상세 필터를 펼치는 버튼이 있다`, canToggleFilters);
+    if (canToggleFilters) {
+      const deliveryFilter = mobile.getByRole("combobox", { name: "데이터 유형", includeHidden: true });
+      check(`모바일 ${width}px: 처음에는 추가 조건이 접혀 있다`, !(await deliveryFilter.isVisible()));
+      await filterToggle.click();
+      await deliveryFilter.selectOption("API");
+      await filterToggle.click();
+      check(`모바일 ${width}px: 접어도 API 조건과 결과가 유지된다`, !(await deliveryFilter.isVisible()) && (await mobile.locator(".dataset-list button").count()) < total && await mobile.getByRole("button", { name: "데이터 유형 API 해제", exact: true }).isVisible());
+      await mobile.getByRole("button", { name: "데이터 유형 API 해제", exact: true }).click();
+      check(`모바일 ${width}px: 조건 태그를 해제하면 전체 목록으로 돌아온다`, (await mobile.locator(".dataset-list button").count()) === total && await deliveryFilter.inputValue() === "전체");
+    }
+
+    await mobile.getByRole("radio", { name: "AI 질문 검색", exact: true }).check();
+    const recommendButton = await mobile.getByRole("button", { name: "추천받기", exact: true }).boundingBox();
+    check(`모바일 ${width}px: 질문 모드의 버튼·안내가 화면 안에 표시된다`, recommendButton.height >= 44 && recommendButton.x + recommendButton.width <= width && await mobile.locator(".home-question-notice").isVisible() && await mobile.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
+    await mobile.fill(".global-search input", "체육시설 안전 데이터");
+    await mobile.press(".global-search input", "Enter");
+    await mobile.waitForSelector(".ask-list .ask-item");
+    check(`모바일 ${width}px: 질문 모드에서는 Enter로 추천을 받는다`, await mobile.inputValue("#ask-question") === "체육시설 안전 데이터" && await mobile.locator(".global-search input, #ask-question").count() === 1);
+    await mobile.locator("button.brand").click();
     // 목록에서 데이터를 고르면 상세로 이동
     await mobile.locator(".dataset-list button").nth(3).click();
     await mobile.waitForTimeout(900);

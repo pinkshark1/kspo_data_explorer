@@ -1,4 +1,4 @@
-// 질문 검색의 AI 경로 점검(모의 서버 사용).   npm run build && npm run check:ai
+// AI 질문 검색의 AI 경로 점검(모의 서버 사용).   npm run build && npm run check:ai
 // 실제 AI 를 호출하지 않는다. Gemini API, 공용 무료 AI 중계, Anthropic API(기관 AI 서버 참조 구현이 쓰는 쪽), 기관 AI 서버를 모의 응답으로 대신해, 아래를 확인한다.
 //   1) 기관 AI 서버 참조 구현(scripts/ai-gateway.mjs): 요청 형식, 허용 주소, 입력 검사, 호출·하루·동시 처리 한도, 폴백, 거절, 연결 끊김
 //   2) 브라우저의 Gemini 직접 호출: 헤더·본문 형식(설정된 모델 기준), 결과 표시, 오류별 안내, 키 비저장, 취소·최신 질문 우선
@@ -311,7 +311,7 @@ async function openAsk(browser, base, { siteMutator, viewport = { width: 1280, h
     await route.fulfill({ response, json: site });
   });
   await page.goto(`${base}/`, { waitUntil: "networkidle" });
-  await page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("button", { name: "질문 검색" }).click();
+  await page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("button", { name: "AI 질문 검색" }).click();
   await page.waitForSelector(".ask-form");
   return { context, page, requests };
 }
@@ -456,7 +456,7 @@ async function checkSharedBrowser(browser, base) {
     await page.getByRole("button", { name: "내 키 사용하기 (선택)", exact: true }).click();
     await page.locator(".ask-open").first().click();
     await page.waitForSelector(".profile");
-    await page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("button", { name: "질문 검색" }).click();
+    await page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("button", { name: "AI 질문 검색" }).click();
     await page.waitForSelector(".ask-form");
     await page.getByRole("button", { name: "내 키 사용하기 (선택)", exact: true }).click();
     const stored = await page.evaluate(() => Object.keys(localStorage).length + Object.keys(sessionStorage).length + document.cookie.length);
@@ -643,7 +643,7 @@ async function checkBrowser() {
       await page.locator(".ask-open").first().click();
       await page.waitForSelector(".profile");
       check("[브라우저] 추천 결과의 ‘상세 보기’가 데이터 상세로 이동한다", (await page.locator(".dataset-list button.active").count()) === 1);
-      await page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("button", { name: "질문 검색" }).click();
+      await page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("button", { name: "AI 질문 검색" }).click();
       await page.waitForSelector(".ask-form");
       check("[브라우저] 다녀온 뒤에도 질문과 결과는 남고 API 키는 비어 있다", (await page.inputValue("#ask-question")).includes("체육시설") && (await page.locator(".ask-list .ask-item").count()) > 0 && (await page.inputValue("#ask-api-key")) === "" && !(await page.evaluate(() => document.activeElement?.classList.contains("ask-heading"))));
       await context.close();

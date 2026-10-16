@@ -64,7 +64,7 @@
   },
   "ai": {
     "enabled": true,
-    "navLabel": "질문 검색",
+    "navLabel": "AI 질문 검색",
     "modes": [
       "local",
       "gemini"

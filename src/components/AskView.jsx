@@ -277,12 +277,59 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
   return (
     <section className="standalone-content ask-view" id="main-content" aria-labelledby="ask-title">
       <div className="ideas-heading">
-        <span>질문으로 찾기</span>
+        <span>AI 질문 검색</span>
         <h1 id="ask-title">궁금한 점을 문장으로 물어보세요</h1>
         <p>예: “체육시설 안전과 연계할 수 있는 데이터가 뭐 있어?” 질문과 관련된 공개 데이터를 골라 이유와 함께 보여드립니다.</p>
       </div>
 
       <form className="ask-form" onSubmit={submit}>
+        <p className="ask-current-mode">{modeInfo?.label}로 찾습니다.</p>
+        <div className="ask-input">
+          <label htmlFor="ask-question" className="sr-only">
+            질문
+          </label>
+          <textarea
+            id="ask-question"
+            ref={questionRef}
+            rows={2}
+            maxLength={300}
+            value={question}
+            aria-invalid={formError ? "true" : undefined}
+            aria-describedby={formError ? "ask-form-error" : undefined}
+            onChange={(event) => setQuestion(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) submit(event);
+            }}
+            placeholder="궁금한 내용을 입력하세요 (Ctrl+Enter로 질문)"
+          />
+          <button type="submit">{loading ? "다시 질문하기" : "질문하기"}</button>
+        </div>
+
+        {isAi && (
+          <p className="ask-privacy">
+            ※ 질문과 후보 데이터의 이름·분야·설명 요약이 <b>{sendTarget}</b>로 전송됩니다. 개인정보·비밀번호는 입력하지 마세요.
+            {sharedEnabled && !usePersonalKey && " 공용 AI 이용 확인에는 Cloudflare Turnstile을 사용합니다."}
+          </p>
+        )}
+        {formError && (
+          <p className="ask-error" id="ask-form-error" role="alert">
+            {formError}
+          </p>
+        )}
+
+        {ai.exampleQuestions?.length > 0 && (
+          <div className="ask-examples">
+            <span>이런 질문을 해 보세요</span>
+            {savedExamples && <small className="ask-examples-note">예시 질문은 저장해 둔 실제 AI 응답을 바로 보여 줍니다(AI 호출 없음).</small>}
+            {ai.exampleQuestions.map((text) => (
+              <button type="button" key={text} onClick={() => useExample(text)}>
+                {text}
+              </button>
+            ))}
+          </div>
+        )}
+        {sharedEnabled && <div className="ask-verification" ref={verificationRef} aria-label="공용 무료 AI 이용 확인" />}
+
         {modes.length > 1 && (
           <fieldset className="ask-modes">
             <legend>검색 방식</legend>
@@ -308,8 +355,6 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
             )}
           </div>
         )}
-
-        {sharedEnabled && <div className="ask-verification" ref={verificationRef} aria-label="공용 무료 AI 이용 확인" />}
 
         {needsKey && (
           <div className="ask-key">
@@ -359,50 +404,6 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
           </div>
         )}
 
-        <div className="ask-input">
-          <label htmlFor="ask-question" className="sr-only">
-            질문
-          </label>
-          <textarea
-            id="ask-question"
-            ref={questionRef}
-            rows={2}
-            maxLength={300}
-            value={question}
-            aria-invalid={formError ? "true" : undefined}
-            aria-describedby={formError ? "ask-form-error" : undefined}
-            onChange={(event) => setQuestion(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) submit(event);
-            }}
-            placeholder="궁금한 내용을 입력하세요 (Ctrl+Enter로 질문)"
-          />
-          <button type="submit">{loading ? "다시 질문하기" : "질문하기"}</button>
-        </div>
-
-        {isAi && (
-          <p className="ask-privacy">
-            ※ 질문과 후보 데이터의 이름·분야·설명 요약이 <b>{sendTarget}</b>로 전송됩니다. 개인정보·비밀번호는 입력하지 마세요.
-            {sharedEnabled && !usePersonalKey && " 공용 AI 이용 확인에는 Cloudflare Turnstile을 사용합니다."}
-          </p>
-        )}
-        {formError && (
-          <p className="ask-error" id="ask-form-error" role="alert">
-            {formError}
-          </p>
-        )}
-
-        {ai.exampleQuestions?.length > 0 && (
-          <div className="ask-examples">
-            <span>이런 질문을 해 보세요</span>
-            {savedExamples && <small className="ask-examples-note">예시 질문은 저장해 둔 실제 AI 응답을 바로 보여 줍니다(AI 호출 없음).</small>}
-            {ai.exampleQuestions.map((text) => (
-              <button type="button" key={text} onClick={() => useExample(text)}>
-                {text}
-              </button>
-            ))}
-          </div>
-        )}
       </form>
 
       <p className="sr-only" role="status" aria-live="polite">

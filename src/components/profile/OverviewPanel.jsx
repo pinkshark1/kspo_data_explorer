@@ -1,4 +1,5 @@
 import SampleTable from "../SampleTable.jsx";
+import UiIcon from "../UiIcon.jsx";
 
 // "한눈에 보기" 탭: 컬럼 요약 카드 + 샘플 행 카드
 export default function OverviewPanel({ dataset, detail, onOpenTab }) {
@@ -25,7 +26,7 @@ export default function OverviewPanel({ dataset, detail, onOpenTab }) {
           <span className="example-chip">{hasColumns ? "공식 컬럼" : "정의서 미제공"}</span>
         </div>
         <div className="table-summary">
-          <span className="table-icon large">▦</span>
+          <UiIcon name="table" className="table-icon large" />
           <div>
             <strong>{dataset.name}</strong>
             <p>{tableDescription}</p>

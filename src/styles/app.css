@@ -712,13 +712,13 @@ select:focus-visible {
   cursor: pointer;
   background: 0 0;
   border: 1px solid #0000;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 9px;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: start;
+  gap: 5px 10px;
   width: 100%;
   min-height: 64px;
   margin-bottom: 5px;
-  padding: 9px 8px;
+  padding: 12px 10px;
   display: grid;
 }
 .dataset-list > button:hover {
@@ -735,18 +735,21 @@ select:focus-visible {
 }
 .dataset-list > button b {
   color: var(--krds-gray-80);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  display: block;
+  font-size: 15px;
+  line-height: 1.5;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
 }
 .dataset-list > button small {
-  color: var(--krds-gray-50);
+  color: var(--krds-gray-60);
   text-overflow: ellipsis;
   white-space: nowrap;
   margin-top: 4px;
-  font-size: 10px;
+  font-size: 12px;
   display: block;
   overflow: hidden;
 }
@@ -840,33 +843,6 @@ select:focus-visible {
   font-size: 15px;
   line-height: 1.6;
 }
-.home-ask {
-  display: flex;
-  gap: 8px;
-}
-.home-ask input {
-  flex: 1;
-  min-width: 0;
-  min-height: 48px;
-  border: 1px solid var(--krds-gray-30, #b1b8be);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  padding: 0 14px;
-  font-size: 16px;
-}
-.home-ask button {
-  flex: none;
-  min-width: 108px;
-  min-height: 48px;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: var(--primary-strong);
-  color: #fff;
-  cursor: pointer;
-  padding: 0 20px;
-  font-size: 15px;
-  font-weight: 700;
-}
 .home-examples {
   display: flex;
   flex-wrap: wrap;
@@ -924,14 +900,6 @@ select:focus-visible {
   .home-intro > p,
   .home-examples {
     display: none;
-  }
-  .home-ask input,
-  .home-ask button {
-    min-height: 44px;
-  }
-  .home-ask button {
-    min-width: 0;
-    padding: 0 14px;
   }
 }
 /* 질문 결과 제목은 결과가 나오면 초점을 받는다. 마우스로 온 경우에는 초점 테두리를 그리지 않는다. */
@@ -1075,56 +1043,33 @@ select:focus-visible {
 .request-button:hover {
   background: var(--primary-deep);
 }
-.summary-cards {
-  grid-template-columns: 0.85fr 1.25fr 0.9fr;
-  gap: 14px;
-  margin-top: 30px;
-  display: grid;
-}
-.summary-cards article {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: #fff;
-  align-items: center;
-  gap: 15px;
-  min-width: 0;
-  min-height: 120px;
-  padding: 20px;
+.profile-facts {
   display: flex;
-}
-.summary-icon {
-  border-radius: var(--radius-md);
-  background: var(--krds-primary-5);
-  width: 48px;
-  height: 48px;
-  color: var(--primary-strong);
-  flex: 0 0 48px;
-  place-items: center;
-  font-size: 20px;
-  font-weight: 800;
-  display: grid;
-}
-.summary-icon.database {
-  background: var(--krds-secondary-5);
-  color: var(--krds-secondary-50);
-}
-.summary-cards article div {
-  min-width: 0;
-}
-.summary-cards small {
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-top: 18px;
   color: var(--muted);
-  margin-bottom: 6px;
-  font-size: 12px;
-  display: block;
+  font-size: 14px;
 }
-.summary-cards strong {
-  letter-spacing: -0.02em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 18px;
-  line-height: 1.4;
-  display: block;
-  overflow: hidden;
+.profile-facts b {
+  margin-left: 5px;
+  color: var(--ink);
+}
+.profile-information {
+  margin-top: 28px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 20px;
+}
+.source-system {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.source-system strong {
+  color: var(--ink);
+  overflow-wrap: anywhere;
 }
 .quality-strip {
   border-radius: var(--radius-md);
@@ -1262,17 +1207,15 @@ select:focus-visible {
   font-size: 22px;
 }
 .table-summary strong {
-  font:
-    700 14px/1.4 ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    monospace;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.5;
   display: block;
 }
 .table-summary p {
   color: var(--muted);
   margin: 5px 0 0;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.55;
 }
 .schema-metrics {
@@ -1300,7 +1243,7 @@ select:focus-visible {
   border-spacing: 0;
   width: 100%;
   margin-top: 12px;
-  font-size: 10px;
+  font-size: 12px;
   overflow: hidden;
 }
 .schema-preview th {
@@ -1320,6 +1263,7 @@ select:focus-visible {
 .schema-preview td:first-child {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 .schema-preview i,
 .dictionary i {
@@ -1337,7 +1281,7 @@ select:focus-visible {
   background: 0 0;
   border: 0;
   padding: 10px 2px 0;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
   text-decoration: underline;
 }
@@ -1356,7 +1300,7 @@ select:focus-visible {
   border-collapse: collapse;
   white-space: nowrap;
   width: 100%;
-  font-size: 11px;
+  font-size: 13px;
 }
 .data-table th {
   background: var(--krds-gray-5);
@@ -2175,9 +2119,6 @@ select:focus-visible {
   .overview-grid {
     grid-template-columns: 1fr;
   }
-  .summary-cards article {
-    padding: 16px;
-  }
 }
 @media (max-width: 920px) {
   .service-banner > div {
@@ -2214,12 +2155,6 @@ select:focus-visible {
   }
   .profile-header {
     flex-direction: column;
-  }
-  .summary-cards {
-    grid-template-columns: 1fr 1fr;
-  }
-  .summary-cards article:nth-child(2) {
-    grid-area: 2/1 / auto/-1;
   }
   .profile-tabs {
     overflow-x: auto;
@@ -2319,12 +2254,6 @@ select:focus-visible {
     flex: 1;
     padding-inline-start: 10px;
     padding-inline-end: 10px;
-  }
-  .summary-cards {
-    grid-template-columns: 1fr;
-  }
-  .summary-cards article:nth-child(2) {
-    grid-area: auto;
   }
   .quality-strip {
     align-items: flex-start;
@@ -3434,4 +3363,347 @@ select:focus-visible {
 .ask-result .metadata-empty:focus {
   outline: 3px solid var(--focus);
   outline-offset: 4px;
+}
+
+/* 검색 진입점과 데이터 읽기 */
+.ui-icon {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  vertical-align: middle;
+}
+.ui-icon.large {
+  width: 24px;
+  height: 24px;
+}
+.global-search > .ui-icon {
+  color: var(--muted);
+}
+.explorer-topbar {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+.explorer-topbar .main-nav {
+  justify-content: flex-end;
+}
+.home-intro {
+  width: min(100%, 1600px);
+  margin: 0 auto;
+  padding: 24px 28px;
+  border-radius: 0;
+}
+.home-intro h2 {
+  font-weight: 700;
+  color: var(--primary-deep);
+}
+.home-intro .global-search {
+  max-width: 1000px;
+  margin-top: 10px;
+  height: 52px;
+}
+.search-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 16px 0 10px;
+  border: 0;
+  padding: 0;
+}
+.search-modes label {
+  position: relative;
+  cursor: pointer;
+}
+.search-modes input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.search-modes label > span {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--krds-gray-30);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--krds-gray-70);
+  font-size: 15px;
+  font-weight: 700;
+}
+.search-modes input:checked + span {
+  border-color: var(--primary-strong);
+  background: var(--primary-strong);
+  color: #fff;
+}
+.search-modes input:focus-visible + span {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.search-mode-help {
+  max-width: 1000px;
+  color: var(--krds-gray-70);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.home-intro > .home-question-notice {
+  display: block;
+  margin: 8px 0 0;
+  color: var(--krds-gray-70);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.unified-search > button {
+  font-size: 15px;
+}
+.unified-search > .search-ask:disabled {
+  color: var(--muted);
+  background: var(--krds-gray-5);
+  cursor: default;
+}
+.unified-search input {
+  font-size: 16px;
+}
+.side-heading h2 {
+  margin: 0;
+  font: inherit;
+  scroll-margin-top: 20px;
+}
+.side-heading h2:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 4px;
+}
+.explorer-controls {
+  grid-template-columns: 140px minmax(0, 1fr) auto;
+  min-height: 100px;
+  gap: 16px;
+  padding: 16px 28px;
+}
+.filter-fields label > span,
+.filter-fields select,
+.filter-actions button {
+  font-size: 14px;
+}
+.filter-extra {
+  display: contents;
+}
+.filter-toggle {
+  display: none;
+}
+.filter-tags {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.filter-tags button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--krds-primary-20);
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: var(--primary-soft);
+  color: var(--primary-deep);
+  font-size: 13px;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.filter-tags button span:first-child {
+  flex: none;
+  color: var(--muted);
+}
+.filter-tags button span:last-child {
+  font-size: 18px;
+}
+.filter-actions {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.query-chip {
+  max-width: 100%;
+  min-width: 0;
+}
+.query-chip b {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.query-chip button {
+  flex: none;
+}
+.dataset-list > button .table-icon {
+  margin-top: 2px;
+}
+.dataset-list > button .portal-mark {
+  grid-column: 2;
+  justify-self: start;
+  font-size: 11px;
+}
+.profile-tabs {
+  margin-top: 18px;
+}
+.profile-tabs small {
+  font-size: 12px;
+}
+.profile-header .title-line h1 {
+  font-weight: 700;
+}
+.ask-current-mode {
+  color: var(--primary-deep);
+  font-size: 14px;
+  font-weight: 600;
+}
+.ask-modes {
+  margin-top: 12px;
+}
+.ask-privacy,
+.ask-modes small {
+  font-size: 13px;
+}
+
+@media (min-width: 921px) and (max-width: 1280px) {
+  .explorer-topbar {
+    min-height: 88px;
+    padding-block: 0;
+  }
+  .explorer-shell .sidebar {
+    top: 88px;
+    height: calc(100vh - 88px);
+  }
+}
+@media (max-width: 1280px) {
+  .explorer-controls {
+    grid-template-columns: 140px minmax(0, 1fr);
+  }
+}
+@media (max-width: 920px) {
+  .explorer-controls {
+    grid-template-columns: 1fr;
+  }
+  .filter-fields {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+  }
+  .filter-fields > label:first-child {
+    grid-column: auto;
+  }
+  .filter-title {
+    display: none;
+  }
+  .filter-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 44px;
+    border: 1px solid var(--krds-gray-40);
+    border-radius: var(--radius-sm);
+    padding: 0 12px;
+    background: var(--surface);
+    color: var(--krds-gray-80);
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .filter-toggle[aria-expanded="true"] {
+    border-color: var(--primary-strong);
+    color: var(--primary-strong);
+  }
+  .filter-toggle b {
+    color: var(--primary-strong);
+  }
+  .filter-extra {
+    display: none;
+  }
+  .filters-expanded .filter-extra {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    grid-column: 1 / -1;
+  }
+  .filter-extra label:first-child {
+    grid-column: 1 / -1;
+  }
+  .filter-actions {
+    display: flex;
+    justify-content: space-between;
+  }
+}
+@media (max-width: 640px) {
+  .explorer-topbar {
+    gap: 10px;
+    padding-bottom: 0;
+  }
+  .explorer-topbar .main-nav {
+    justify-content: stretch;
+  }
+  .home-intro {
+    padding: 18px 16px;
+  }
+  .home-intro h2 {
+    font-size: 18px;
+    line-height: 1.45;
+  }
+  .search-modes {
+    gap: 6px;
+    margin-top: 12px;
+  }
+  .search-modes label > span {
+    padding: 0 12px;
+    font-size: 14px;
+  }
+  .search-mode-help {
+    font-size: 13px;
+  }
+  .home-intro .unified-search {
+    height: 48px;
+  }
+  .unified-search input {
+    font-size: 14px;
+  }
+  .home-intro .question-search {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    height: auto;
+    padding: 0;
+    margin-top: 12px;
+  }
+  .question-search > .ui-icon {
+    position: absolute;
+    top: 14px;
+    left: 12px;
+  }
+  .question-search input {
+    grid-column: 1 / -1;
+    height: 48px;
+    padding: 0 12px 0 40px;
+    font-size: 14px;
+  }
+  .question-search > button {
+    height: 44px;
+    border-top: 1px solid var(--line);
+    font-size: 14px;
+  }
+  .explorer-controls {
+    gap: 10px;
+    padding: 14px 16px;
+  }
+  .profile-header {
+    gap: 16px;
+  }
+  .profile-facts {
+    gap: 6px 16px;
+    font-size: 13px;
+  }
+  .profile-tabs button {
+    padding-inline: 9px;
+  }
 }
