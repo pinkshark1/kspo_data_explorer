@@ -47,14 +47,41 @@ function claudeReady(env) {
 
 // 이상 징후가 없으면 이용 확인 없이 받는다. (2026-10-27 사용자 결정: Turnstile은 이상 접근 때만)
 // 이용 확인 없는 요청이 같은 IP에서 분당 3회, 전체에서 분당 30회를 넘으면 이상 징후로 보고 이용 확인을 요구한다.
-// 제한 장치가 설정되지 않았거나 응답하지 않으면 안전하게 항상 이용 확인을 요구한다.
+// Cloudflare 요청 제한 바인딩은 근사치라 실측에서 분당 12회도 막지 않았으므로, 하나의 Durable Object가 정확히 센다.
+export const UNVERIFIED_PER_IP_PER_MINUTE = 3;
+export const UNVERIFIED_TOTAL_PER_MINUTE = 30;
+
+// 분 단위 고정 창으로 센다. 개수는 메모리에만 두며(객체가 내려가면 0부터 다시 셈) IP를 저장하지 않는다.
+export class UsageGate {
+  constructor() {
+    this.minute = 0;
+    this.perIp = new Map();
+    this.total = 0;
+  }
+
+  async fetch(request) {
+    const { ip } = await request.json();
+    const minute = Math.floor(Date.now() / 60_000);
+    if (minute !== this.minute) {
+      this.minute = minute;
+      this.perIp.clear();
+      this.total = 0;
+    }
+    const mine = (this.perIp.get(ip) ?? 0) + 1;
+    if (typeof ip !== "string" || !ip || mine > UNVERIFIED_PER_IP_PER_MINUTE || this.total + 1 > UNVERIFIED_TOTAL_PER_MINUTE) return Response.json({ ok: false });
+    this.perIp.set(ip, mine);
+    this.total += 1;
+    return Response.json({ ok: true });
+  }
+}
+
+// 계수 장치가 설정되지 않았거나 응답하지 않으면 안전하게 항상 이용 확인을 요구한다.
 async function admitWithoutVerification(env, ip) {
-  if (typeof env.UNVERIFIED_IP_LIMITER?.limit !== "function" || typeof env.UNVERIFIED_ALL_LIMITER?.limit !== "function") return false;
+  if (typeof env.USAGE_GATE?.idFromName !== "function") return false;
   try {
-    const mine = await env.UNVERIFIED_IP_LIMITER.limit({ key: `unverified:${ip}` });
-    if (!mine.success) return false;
-    const all = await env.UNVERIFIED_ALL_LIMITER.limit({ key: "unverified:all" });
-    return all.success === true;
+    const gate = env.USAGE_GATE.get(env.USAGE_GATE.idFromName("unverified"));
+    const response = await gate.fetch("https://usage-gate/check", { method: "POST", body: JSON.stringify({ ip }) });
+    return response.ok && (await response.json()).ok === true;
   } catch { return false; }
 }
 

@@ -22,13 +22,12 @@ simple = { limit = 5, period = 60 }
 [observability]
 enabled = false
 
-# 이용 확인(Turnstile) 없이 받는 요청의 상한. 넘으면 이상 징후로 보고 이용 확인을 요구한다.
-[[ratelimits]]
-name = "UNVERIFIED_IP_LIMITER"
-namespace_id = "10014"
-simple = { limit = 3, period = 60 }
+# 이용 확인(Turnstile) 없이 받는 요청을 정확히 세는 장치(같은 IP 분당 3회, 전체 분당 30회). 넘으면 이상 징후로 보고 이용 확인을 요구한다.
+# Workers 무료 플랜은 SQLite 방식 Durable Object만 쓸 수 있다.
+[[durable_objects.bindings]]
+name = "USAGE_GATE"
+class_name = "UsageGate"
 
-[[ratelimits]]
-name = "UNVERIFIED_ALL_LIMITER"
-namespace_id = "10015"
-simple = { limit = 30, period = 60 }
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["UsageGate"]

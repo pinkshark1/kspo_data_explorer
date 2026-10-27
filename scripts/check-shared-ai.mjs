@@ -1,6 +1,6 @@
 // 공용 무료 중계의 보안 경계·한도 분류·취소를 실제 키나 외부 호출 없이 검증한다.
 import assert from "node:assert/strict";
-import { createSharedAiHandler, issuePass, PASS_TTL_SECONDS, quotaFacts, SHARED_CLAUDE_MODEL, SHARED_MODEL } from "../server/shared-ai-worker.js";
+import { createSharedAiHandler, issuePass, PASS_TTL_SECONDS, quotaFacts, SHARED_CLAUDE_MODEL, SHARED_MODEL, UNVERIFIED_PER_IP_PER_MINUTE, UNVERIFIED_TOTAL_PER_MINUTE, UsageGate } from "../server/shared-ai-worker.js";
 
 let passed = 0;
 async function check(name, run) {
@@ -247,8 +247,10 @@ await check("미리 취소한 요청은 전송하지 않고 진행 중 취소·�
 
 // ---- Claude 우선 호출 (Anthropic 조직의 포함 크레딧) ----
 // 이용 확인은 이상 징후 때만: 평소에는 확인 없이 받고, 통과한 방문자에게는 30분 통행증을 준다.
-const limiter = (ok = true) => ({ calls: [], async limit(args) { this.calls.push(args); return { success: typeof ok === "function" ? ok(args) : ok }; } });
-const freeEnv = (ipOk = true, allOk = true) => ({ ...env, UNVERIFIED_IP_LIMITER: limiter(ipOk), UNVERIFIED_ALL_LIMITER: limiter(allOk) });
+// Durable Object 바인딩 흉내: 실제 UsageGate 클래스 하나를 모든 요청이 함께 쓴다.
+const gateBinding = (gate = new UsageGate()) => ({ names: [], idFromName(name) { this.names.push(name); return name; }, get: () => ({ fetch: (url, init) => gate.fetch(new Request(url, init)) }) });
+const freeEnv = (binding = gateBinding()) => ({ ...env, USAGE_GATE: binding });
+const fromIp = (body, ip) => request(body, { headers: { "CF-Connecting-IP": ip } });
 const { verificationToken: _unused, ...plainInput } = input;
 await check("[이용 확인] 이상 징후가 없으면 Turnstile 없이 답하고 통행증은 주지 않는다", async () => {
   const { handle, calls, verifications } = harness();
@@ -258,12 +260,29 @@ await check("[이용 확인] 이상 징후가 없으면 Turnstile 없이 답하�
   assert.equal(verifications.length, 0);
   assert.equal(calls.length, 1);
   assert.equal(response.headers.get("x-ai-pass"), null);
-  assert.deepEqual(testEnv.UNVERIFIED_IP_LIMITER.calls, [{ key: "unverified:192.0.2.1" }]);
-  assert.deepEqual(testEnv.UNVERIFIED_ALL_LIMITER.calls, [{ key: "unverified:all" }]);
+  assert.deepEqual(testEnv.USAGE_GATE.names, ["unverified"], "모든 요청이 한 계수 장치를 함께 쓴다");
 });
-await check("[이용 확인] IP·전체 상한 초과나 제한 장치 없음·오류는 AI를 부르지 않고 이용 확인을 요구한다", async () => {
-  const broken = { limit: async () => { throw new Error("down"); } };
-  for (const testEnv of [freeEnv(false, true), freeEnv(true, false), env, { ...env, UNVERIFIED_IP_LIMITER: broken, UNVERIFIED_ALL_LIMITER: broken }]) {
+await check("[이용 확인] 같은 IP에서 분당 3회를 넘으면 정확히 그다음 요청부터 이용 확인을 요구하고, 다른 IP는 영향 없음", async () => {
+  const { handle, calls } = harness();
+  const testEnv = freeEnv();
+  const statuses = [];
+  for (let i = 0; i < UNVERIFIED_PER_IP_PER_MINUTE + 1; i += 1) statuses.push((await handle(request(plainInput), testEnv)).status);
+  assert.deepEqual(statuses, [200, 200, 200, 403]);
+  assert.equal((await handle(fromIp(plainInput, "198.51.100.7"), testEnv)).status, 200);
+  assert.equal(calls.length, UNVERIFIED_PER_IP_PER_MINUTE + 1);
+});
+await check("[이용 확인] 전체가 분당 30회를 넘으면(여러 IP로 나눠도) 이용 확인을 요구한다", async () => {
+  const { handle } = harness();
+  const testEnv = freeEnv();
+  for (let i = 0; i < UNVERIFIED_TOTAL_PER_MINUTE; i += 1) assert.equal((await handle(fromIp(plainInput, `203.0.113.${i}`), testEnv)).status, 200);
+  const blocked = await handle(fromIp(plainInput, "203.0.113.200"), testEnv);
+  assert.equal(blocked.status, 403);
+  assert.deepEqual(await blocked.json(), { error: "verification_required" });
+});
+await check("[이용 확인] 계수 장치가 없거나 오류이면 AI를 부르지 않고 이용 확인을 요구한다", async () => {
+  const broken = { idFromName: () => "x", get: () => ({ fetch: async () => { throw new Error("down"); } }) };
+  const failing = { idFromName: () => "x", get: () => ({ fetch: async () => new Response("err", { status: 500 }) }) };
+  for (const testEnv of [env, freeEnv(broken), freeEnv(failing)]) {
     const { handle, calls, verifications } = harness();
     const response = await handle(request(plainInput), testEnv);
     assert.equal(response.status, 403);
@@ -273,7 +292,11 @@ await check("[이용 확인] IP·전체 상한 초과나 제한 장치 없음·�
 });
 await check("[이용 확인] Turnstile을 통과하면 30분 통행증을 주고, 통행증 요청은 Turnstile·확인 없는 상한 없이 답한다", async () => {
   const { handle, calls, verifications } = harness();
-  const testEnv = freeEnv(false, false);
+  const gate = new UsageGate();
+  gate.perIp.set("192.0.2.1", UNVERIFIED_PER_IP_PER_MINUTE);
+  gate.minute = Math.floor(Date.now() / 60_000);
+  const testEnv = freeEnv(gateBinding(gate));
+  assert.equal((await handle(request(plainInput), testEnv)).status, 403, "이미 상한에 걸린 IP");
   const first = await handle(request(), testEnv);
   assert.equal(first.status, 200);
   const pass = first.headers.get("x-ai-pass");
@@ -285,8 +308,7 @@ await check("[이용 확인] Turnstile을 통과하면 30분 통행증을 주고
   assert.equal(second.status, 200);
   assert.equal(second.headers.get("x-ai-pass"), null, "통행증 요청에는 새 통행증을 주지 않는다");
   assert.equal(verifications.length, 1);
-  assert.equal(calls.length, 2);
-  assert.equal(testEnv.UNVERIFIED_IP_LIMITER.calls.length, 0);
+  assert.equal(calls.length, 2, "상한에 걸린 IP도 이용 확인·통행증으로는 답을 받는다");
 });
 await check("[이용 확인] 다른 IP·위조·만료·다른 비밀값 통행증은 거절하고, 토큰과 통행증을 함께 보내면 잘못된 요청", async () => {
   const secret = env.TURNSTILE_SECRET_KEY;
