@@ -3,7 +3,7 @@ import { cycleLabel, deliveryOf, portalOf, shortField } from "../lib/catalog.js"
 import { buildIndex } from "../ai/retrieval.js";
 import { recommend } from "../ai/recommend.js";
 import { sharedGeminiUrl } from "../ai/providers/shared-gemini.js";
-import { verifySharedUsage } from "../ai/providers/turnstile.js";
+import { discardPreparedUsage, prepareSharedUsage, verifySharedUsage } from "../ai/providers/turnstile.js";
 
 const RELEVANCE_LABEL = { high: "관련도 높음", medium: "관련도 보통", low: "참고" };
 
@@ -109,6 +109,7 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
   useEffect(() => () => {
     abortRef.current?.abort();
     abortRef.current = null;
+    discardPreparedUsage();
   }, []);
 
   // 저장된 AI 추천 예시: 실제 키로 받은 응답을 data/ai-examples.json 에 둔 것. 예시 질문이면 AI 호출 없이 보여 준다. (새로 AI 를 부르지 않음)
@@ -223,6 +224,7 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
   const cancel = () => {
     abortRef.current?.abort();
     abortRef.current = null;
+    discardPreparedUsage();
     setVerifying(false);
     setStatus(result ? "done" : "idle");
     setLiveMessage("질문을 취소했습니다.");
@@ -296,7 +298,11 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
             value={question}
             aria-invalid={formError ? "true" : undefined}
             aria-describedby={formError ? "ask-form-error" : undefined}
-            onChange={(event) => setQuestion(event.target.value)}
+            onChange={(event) => {
+              setQuestion(event.target.value);
+              // 공용 AI로 질문할 것 같으면 이용 확인을 미리 시작해 질문하기를 누른 뒤 기다리는 시간을 줄인다.
+              if (sharedEnabled && !usePersonalKey && status !== "loading" && event.target.value.trim().length >= 2) prepareSharedUsage({ siteKey: ai.gemini.shared.turnstileSiteKey, container: verificationRef.current });
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) submit(event);
             }}

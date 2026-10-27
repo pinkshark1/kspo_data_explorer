@@ -21,31 +21,34 @@ export function toAiError(error, Anthropic) {
  * @param {object} options
  * @param {object} options.Anthropic  SDK 기본 export (오류 클래스 판별용)
  * @param {object} options.client     SDK 클라이언트
- * @param {object} options.config     site.json 의 ai.claude (model, effort, maxTokens, refusalFallback)
+ * @param {object} options.config     site.json 의 ai.claude (model, effort, maxTokens, refusalFallback, thinking)
  * @param {string} options.system     시스템 프롬프트
  * @param {string} options.userMessage 질문과 후보
  * @param {AbortSignal} [options.signal]
  */
 export async function runClaudeRequest({ Anthropic, client, config, system, userMessage, signal }) {
-  const buildRequest = (structured) => ({
+  const buildRequest = (structured, thinking) => ({
     model: config.model,
     max_tokens: config.maxTokens,
     // 구조화 출력을 쓸 수 없을 때는 지시문으로 JSON 형식을 요구한다. (응답 해석은 parseAiResponse 가 글 속의 JSON 을 찾아낸다)
     system: structured ? system : `${system}\n\n${FORMAT_HINT}`,
     messages: [{ role: "user", content: userMessage }],
+    ...(thinking ? { thinking: { type: config.thinking } } : {}),
     output_config: { ...(structured ? { format: { type: "json_schema", schema: AI_SCHEMA } } : {}), ...(config.effort ? { effort: config.effort } : {}) },
   });
 
   // 계정·모델이 일부 옵션을 받지 않아 400 이 오면, 옵션을 하나씩 빼며 다시 시도한다.
-  //   1) 거절 시 다른 모델로 이어 처리하는 폴백(베타)  2) 구조화 출력(JSON 스키마)
+  //   1) 거절 시 다른 모델로 이어 처리하는 폴백(베타)  2) 생각 설정(config.thinking, 예: 응답을 빠르게 하려고 끔)  3) 구조화 출력(JSON 스키마)
+  const thinking = Boolean(config.thinking);
   const attempts = [];
-  if (config.refusalFallback) attempts.push({ fallback: true, structured: true });
-  attempts.push({ fallback: false, structured: true }, { fallback: false, structured: false });
+  if (config.refusalFallback) attempts.push({ fallback: true, structured: true, thinking });
+  if (thinking) attempts.push({ fallback: false, structured: true, thinking: true });
+  attempts.push({ fallback: false, structured: true, thinking: false }, { fallback: false, structured: false, thinking: false });
 
   let response;
   let lastError;
   for (const attempt of attempts) {
-    const request = buildRequest(attempt.structured);
+    const request = buildRequest(attempt.structured, attempt.thinking);
     if (!Object.keys(request.output_config).length) delete request.output_config;
     try {
       response = attempt.fallback

@@ -273,6 +273,7 @@ await check("[Claude] 먼저 호출·고정 모델과 설정·키는 Anthropic �
   assert.equal(body.model, SHARED_CLAUDE_MODEL);
   assert.equal(body.max_tokens, 8192);
   assert.equal(body.output_config.effort, "low");
+  assert.deepEqual(body.thinking, { type: "disabled" }, "응답을 빠르게 하려고 생각을 끈다");
   assert.equal(body.output_config.format.type, "json_schema");
   assert.equal(body.fallbacks, undefined);
   assert.ok(!calls[0][1].body.includes(input.verificationToken), "방문자 토큰은 Anthropic에 보내지 않는다");
@@ -317,7 +318,7 @@ await check("[Claude] 일시 오류·인증·형식·리디렉션·잘린 응답
     ["서버 오류 500", () => claudeError(500, "api_error"), 1],
     ["한도 429", () => claudeError(429, "rate_limit_error"), 1],
     ["인증 401", () => claudeError(401, "authentication_error"), 1],
-    ["요청 거절 400(형식 옵션을 빼고 한 번 더)", () => claudeError(400, "invalid_request_error"), 2],
+    ["요청 거절 400(생각 설정·형식 옵션을 하나씩 빼고 다시)", () => claudeError(400, "invalid_request_error"), 3],
     ["리디렉션", redirected, 1],
     ["JSON 아닌 답", () => json(claudeMessage([{ type: "text", text: "not json" }])), 1],
     ["도중에 끊김", () => json(claudeMessage([{ type: "text", text: '{"summary":"잘' }], "max_tokens")), 1],
@@ -331,13 +332,34 @@ await check("[Claude] 일시 오류·인증·형식·리디렉션·잘린 응답
     assert.ok(!calls.some((call) => !isClaude(call) && call[1].body.includes(claudeKey)), `${label}: Claude 키는 Google에 보내지 않는다`);
   }
 });
-await check("[Claude] 정해진 시간 안에 답하지 않으면 Claude만 끊고 Gemini로 답함", async () => {
+await check("[Claude] 생각 끄기를 받지 않으면(400) 생각 설정만 빼고 다시 물어 Claude로 답함", async () => {
+  const claude = (_url, options) => (JSON.parse(options.body).thinking ? claudeError(400, "invalid_request_error") : json(claudeMessage()));
+  const { handle, calls } = harness(routed({ claude }));
+  const response = await handle(request(), claudeEnv);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("x-ai-provider"), "claude");
+  assert.equal(calls.length, 2);
+  const retried = JSON.parse(calls[1][1].body);
+  assert.equal(retried.thinking, undefined);
+  assert.equal(retried.output_config.format.type, "json_schema", "구조화 출력은 유지한다");
+});
+await check("[Claude] 정해진 시간 안에 답하지 않으면 Claude만 끊고 Gemini로 답하며, 잠시 Claude를 건너뜀", async () => {
   const hang = (_url, options) => new Promise((_resolve, reject) => { options.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true }); });
   const { handle, calls } = harness(routed({ claude: hang }), { claudeTimeoutMs: 30 });
   const response = await handle(request(), claudeEnv);
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("x-ai-provider"), "gemini");
   assert.equal(calls.length, 2);
+  const second = await handle(request(), claudeEnv);
+  assert.equal(second.status, 200);
+  assert.equal(second.headers.get("x-ai-provider"), "gemini");
+  assert.equal(calls.filter(isClaude).length, 1, "다음 요청은 Claude를 기다리지 않고 바로 Gemini에 묻는다");
+});
+await check("[Claude] 서비스 오류(5xx) 뒤에는 잠시 Claude를 건너뜀", async () => {
+  const { handle, calls } = harness(routed({ claude: () => claudeError(529, "overloaded_error") }));
+  assert.equal((await handle(request(), claudeEnv)).headers.get("x-ai-provider"), "gemini");
+  assert.equal((await handle(request(), claudeEnv)).headers.get("x-ai-provider"), "gemini");
+  assert.equal(calls.filter(isClaude).length, 1);
 });
 await check("[Claude] Gemini가 없을 때 크레딧 소진은 공용 한도, 한도는 혼잡, 그 밖은 서비스 오류로 안내", async () => {
   for (const [claude, status, payload] of [

@@ -8,11 +8,13 @@ import { readGeminiText } from "../src/ai/providers/gemini.js";
 export const SHARED_MODEL = "gemini-3.5-flash-lite";
 export const SHARED_CLAUDE_MODEL = "claude-haiku-5-5";
 // 후보 중에서 고르고 짧게 설명하는 작업이라 effort를 낮춰 크레딧을 아낀다. 출력 상한은 Gemini와 같다.
+// Haiku 5.5는 생각(thinking)이 기본으로 켜져 있어 답이 몇 초 늦어지므로 끈다(effort high 이하에서 허용). 받지 않으면 켠 채로 다시 보낸다.
 // Haiku에는 거절 시 다른 모델로 넘기는 서버 폴백이 없으므로 끈다.
-const CLAUDE_CONFIG = { model: SHARED_CLAUDE_MODEL, maxTokens: 8192, effort: "low", refusalFallback: false };
+const CLAUDE_CONFIG = { model: SHARED_CLAUDE_MODEL, maxTokens: 8192, effort: "low", thinking: "disabled", refusalFallback: false };
 const ANTHROPIC_URL = "https://api.anthropic.com";
 // 같은 Worker 인스턴스에서 Claude를 잠시 건너뛰는 시간. 크레딧 소진·키 오류는 곧 풀리지 않으므로 길게 둔다.
-const CLAUDE_PAUSE_MS = { billing: 10 * 60_000, key: 10 * 60_000, rate: 60_000 };
+// 시간 초과·연결 실패·서비스 오류도 잠시 건너뛰어, 그동안 다른 이용자가 Claude를 기다리지 않고 바로 Gemini 답을 받게 한다.
+const CLAUDE_PAUSE_MS = { billing: 10 * 60_000, key: 10 * 60_000, rate: 60_000, timeout: 60_000, network: 60_000, server: 30_000 };
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${SHARED_MODEL}:generateContent`;
 const VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 const MAX_BODY_BYTES = 128 * 1024;
@@ -104,9 +106,10 @@ function pause(ms, signal) {
 }
 
 // Claude가 정해진 시간 안에 답하지 못하거나 실패하면(거절 제외) 같은 질문을 Gemini에 묻는다. 이용 확인은 다시 하지 않는다.
+// 생각을 끈 Haiku는 보통 몇 초 안에 답하므로, 기다리는 시간을 15초로 두고 남은 시간을 Gemini에 넘긴다.
 // Google이 일시 과부하(500·503 "high demand")로 즉시 거절하면 짧게 기다렸다 다시 묻는다.
 // 한도 소진(429)은 다시 묻지 않는다.
-export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args), timeoutMs = 55_000, claudeTimeoutMs = 20_000, maxConcurrent = 4, retryDelaysMs = [1_000, 2_500] } = {}) {
+export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args), timeoutMs = 55_000, claudeTimeoutMs = 15_000, maxConcurrent = 4, retryDelaysMs = [1_000, 2_500] } = {}) {
   // 동시 처리 수는 Worker 인스턴스별 보호 장치다. 전체 Google 한도는 Free 프로젝트가 적용한다.
   let active = 0;
   let claudePause = { until: 0, reason: null };
@@ -180,7 +183,8 @@ export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args),
             claudeFailure = "format";
           } catch (error) {
             if (error?.code === "refusal") return send(422, { error: "refusal" });
-            claudeFailure = error?.code ?? "server";
+            // 정해진 시간이 지나 끊은 경우는 SDK가 취소(cancelled)로 알리므로 시간 초과로 바꿔 기록한다.
+            claudeFailure = claudeController.signal.aborted && !controller.signal.aborted ? "timeout" : error?.code ?? "server";
             if (CLAUDE_PAUSE_MS[claudeFailure]) claudePause = { until: Date.now() + CLAUDE_PAUSE_MS[claudeFailure], reason: claudeFailure };
           } finally {
             clearTimeout(claudeTimer);
