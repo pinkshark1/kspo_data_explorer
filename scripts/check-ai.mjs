@@ -380,18 +380,25 @@ const enableShared = (site) => {
   site.ai.defaultMode = "gemini";
   site.ai.gemini.shared = { ...shippedAi.gemini.shared, url: SHARED_URL, turnstileSiteKey: "mock-public-site-key" };
 };
-async function mockShared(page, calls, handler) {
+// 공용 서버 모의. 기본은 이상 징후 상태처럼 이용 확인 없는 요청에 403 verification_required 를 돌려준다(probes 에만 기록).
+// requireVerification: false 이면 평소처럼 확인 없이 답하고, pass 를 주면 이용 확인 토큰 요청의 응답에 통행증을 붙인다.
+async function mockShared(page, calls, handler, { requireVerification = true, pass, probes = [] } = {}) {
   await page.route("https://shared-ai.test/**", async (route) => {
     const request = route.request();
     if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
     const body = request.postDataJSON();
+    if (requireVerification && body.verificationToken === undefined && body.pass === undefined) {
+      probes.push({ body, headers: request.headers() });
+      return route.fulfill({ status: 403, headers: { ...CORS, "content-type": "application/json" }, body: JSON.stringify({ error: "verification_required" }) });
+    }
     calls.push({ body, headers: request.headers(), url: request.url() });
     const plan = handler(body, calls.length);
     if (plan.delayMs) await sleep(plan.delayMs);
     if (plan.abort) return route.abort("failed");
     const [a, b] = body.candidates.slice(0, 2).map((item) => item.no);
     const answer = plan.body ?? { summary: plan.summary ?? "공용 무료 AI의 추천입니다.", recommendations: [{ no: a, relevance: "high", reason: "체육시설 안전 데이터" }, { no: b, relevance: "medium", reason: "함께 볼 데이터" }], combinations: [] };
-    return route.fulfill({ status: plan.status ?? 200, headers: { ...CORS, "content-type": "application/json" }, body: plan.raw ?? JSON.stringify(answer) });
+    const passHeader = pass && body.verificationToken !== undefined ? { "x-ai-pass": pass } : {};
+    return route.fulfill({ status: plan.status ?? 200, headers: { ...CORS, "content-type": "application/json", ...passHeader }, body: plan.raw ?? JSON.stringify(answer) });
   });
 }
 async function submitShared(page, question = "체육시설 안전 데이터") {
@@ -421,6 +428,37 @@ async function checkSharedBrowser(browser, base) {
     await page.locator(".ask-examples button").first().click();
     await page.waitForSelector(".ask-summary.saved");
     check("[공용 AI] 예시 버튼은 저장된 실제 응답으로 구분하고 무료 AI·이용확인을 새로 호출하지 않는다", calls.length === 1 && (await page.evaluate(() => window.__turnstileTest.executes)) === 1 && (await page.locator(".ask-badge").innerText()) === "AI 추천 예시" && (await page.locator(".ask-saved-note").innerText()).includes("저장해 둔 예시"));
+    await context.close();
+  }
+
+  // 평소(이상 징후 없음)에는 이용 확인 없이 바로 공용 서버에 묻는다.
+  {
+    const { context, page } = await openAsk(browser, base, { siteMutator: enableShared });
+    const calls = [];
+    await mockShared(page, calls, () => ({}), { requireVerification: false });
+    await submitShared(page);
+    await page.waitForSelector(".ask-badge");
+    check("[이용 확인] 이상 징후가 없으면 Turnstile 없이 질문·후보만 보내 결과를 보여 준다", calls.length === 1 && Object.keys(calls[0].body).sort().join("|") === "candidates|question" && (await page.evaluate(() => window.__turnstileTest.executes)) === 0 && (await page.locator(".ask-result .ask-error").count()) === 0);
+    await context.close();
+  }
+  // 서버가 이용 확인을 요구하면 Turnstile을 한 번 받고, 받은 통행증으로 다음 질문은 확인 없이 묻는다.
+  {
+    const { context, page } = await openAsk(browser, base, { siteMutator: enableShared });
+    const calls = [];
+    const probes = [];
+    const pass = `${Math.floor(Date.now() / 1000) + 1800}.${"A".repeat(43)}`;
+    let rejectPass = false;
+    await mockShared(page, calls, (body) => (rejectPass && body.pass ? { status: 403, body: { error: "verification_failed" } } : {}), { pass, probes });
+    await submitShared(page);
+    await page.waitForSelector(".ask-badge");
+    check("[이용 확인] 이용 확인을 요구받으면 Turnstile 토큰으로 다시 묻는다", probes.length === 1 && calls.length === 1 && calls[0].body.verificationToken === "mock-turnstile-token-1" && (await page.evaluate(() => window.__turnstileTest.executes)) === 1);
+    await submitShared(page, "체육시설 위치 데이터");
+    await page.waitForFunction(() => document.querySelector(".ask-asked")?.textContent.includes("체육시설 위치 데이터") && !document.querySelector(".ask-status"));
+    check("[이용 확인] 통행증이 있으면 다음 질문은 이용 확인 없이 통행증만 보낸다", calls.length === 2 && calls[1].body.pass === pass && calls[1].body.verificationToken === undefined && probes.length === 1 && (await page.evaluate(() => window.__turnstileTest.executes)) === 1);
+    rejectPass = true;
+    await submitShared(page, "체육시설 예약 데이터");
+    await page.waitForFunction(() => document.querySelector(".ask-asked")?.textContent.includes("체육시설 예약 데이터") && !document.querySelector(".ask-status"));
+    check("[이용 확인] 통행증이 거절되면 버리고 이용 확인을 한 번 받아 다시 묻는다", calls.length === 4 && calls[2].body.pass === pass && calls[3].body.verificationToken === "mock-turnstile-token-2" && calls[3].body.pass === undefined && (await page.locator(".ask-result .ask-error").count()) === 0);
     await context.close();
   }
 
@@ -487,7 +525,7 @@ async function checkSharedBrowser(browser, base) {
       await page.waitForSelector(".ask-result .ask-error");
       const error = await page.locator(".ask-result .ask-error").innerText();
       const verification = await page.evaluate(() => window.__turnstileTest);
-      check(`[이용 확인] ${scenario}는 안전한 안내·기본검색 결과를 표시하고 공용호출 없음`, calls.length === 0 && error.includes("이용 확인") && !error.includes("한도에 도달") && !error.includes("untrusted-provider-message") && (await page.locator(".ask-list .ask-item").count()) > 0 && (await page.locator("#ask-api-key").count()) === 0 && (scenario === "script-load" || (verification.executes === 2 && verification.removed === 2)), scenario === "script-load" ? "" : `미리 받기 1 + 질문 때 1, 실행 ${verification.executes}·제거 ${verification.removed}`);
+      check(`[이용 확인] ${scenario}는 안전한 안내·기본검색 결과를 표시하고 공용호출 없음`, calls.length === 0 && error.includes("이용 확인") && !error.includes("한도에 도달") && !error.includes("untrusted-provider-message") && (await page.locator(".ask-list .ask-item").count()) > 0 && (await page.locator("#ask-api-key").count()) === 0 && (scenario === "script-load" || (verification.executes === (scenario === "error" ? 2 : 1) && verification.removed === verification.executes)), scenario === "script-load" ? "" : `오류만 자동 재시도 1회, 실행 ${verification.executes}·제거 ${verification.removed}`);
       await page.evaluate(() => { if (window.__turnstileTest) window.__turnstileTest.nextPlan = null; });
     }
     if (scenario === "script-load") await page.evaluate(() => { window.turnstile = window.__restoreTurnstile; });
@@ -509,26 +547,7 @@ async function checkSharedBrowser(browser, base) {
     check("[이용 확인] siteKey 미설정은 공용호출·검증·개인키 자동전환 없이 설정오류와 기본결과를 제공한다", (await page.locator(".ask-result .ask-error").innerText()).includes("설정이 준비되지") && calls.length === 0 && (await page.evaluate(() => window.__turnstileTest.executes)) === 0 && (await page.locator("#ask-api-key").count()) === 0 && (await page.locator(".ask-list .ask-item").count()) > 0);
     await context.close();
   }
-  // 질문을 입력하는 동안 이용 확인 토큰을 미리 받아, 질문하기를 누르면 새로 확인하지 않고 바로 공용 서버를 부른다.
-  {
-    const { context, page } = await openAsk(browser, base, { siteMutator: enableShared });
-    const calls = [];
-    await mockShared(page, calls, () => ({}));
-    await page.fill("#ask-question", "체육시설 안전 데이터");
-    await page.waitForFunction(() => window.__turnstileTest.executes === 1 && window.__turnstileTest.removed === 1);
-    check("[이용 확인] 질문 입력 중 토큰을 미리 받고 위젯을 치우며, 공용 서버는 아직 부르지 않는다", calls.length === 0);
-    await page.getByRole("button", { name: /질문하기/ }).click();
-    await page.waitForSelector(".ask-badge");
-    check("[이용 확인] 질문하기는 미리 받은 토큰을 써서 이용 확인을 다시 하지 않는다", calls.length === 1 && calls[0].body.verificationToken === "mock-turnstile-token-1" && (await page.evaluate(() => window.__turnstileTest.executes)) === 1);
-    await page.evaluate(() => { window.__turnstileTest.nextPlan = { type: "error" }; });
-    await page.fill("#ask-question", "체육시설 위치 데이터");
-    await page.waitForFunction(() => window.__turnstileTest.executes === 2 && window.__turnstileTest.removed === 2);
-    await page.getByRole("button", { name: /질문하기/ }).click();
-    await page.waitForFunction(() => document.querySelector(".ask-summary")?.textContent.includes("공용 무료 AI") && window.__turnstileTest.executes === 3);
-    check("[이용 확인] 미리 받기가 실패하면 질문할 때 새 토큰을 받아 정상 진행한다", calls.length === 2 && calls[1].body.verificationToken === "mock-turnstile-token-3" && (await page.locator(".ask-result .ask-error").count()) === 0);
-    await context.close();
-  }
-  // 미리 받은 토큰 없이 질문할 때 Turnstile 오류가 한 번 나면 새 위젯으로 한 번 더 받는다.
+  // 이용 확인 중 Turnstile 오류가 한 번 나면 새 위젯으로 한 번 더 받는다.
   {
     const { context, page } = await openAsk(browser, base, { siteMutator: enableShared });
     const calls = [];

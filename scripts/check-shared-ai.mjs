@@ -1,6 +1,6 @@
 // 공용 무료 중계의 보안 경계·한도 분류·취소를 실제 키나 외부 호출 없이 검증한다.
 import assert from "node:assert/strict";
-import { createSharedAiHandler, quotaFacts, SHARED_CLAUDE_MODEL, SHARED_MODEL } from "../server/shared-ai-worker.js";
+import { createSharedAiHandler, issuePass, PASS_TTL_SECONDS, quotaFacts, SHARED_CLAUDE_MODEL, SHARED_MODEL } from "../server/shared-ai-worker.js";
 
 let passed = 0;
 async function check(name, run) {
@@ -193,9 +193,10 @@ await check("방문자 토큰·호스트·용도 검증 실패 시 Gemini 호출
     assert.equal((await handle(request(), env)).status, 403);
     assert.equal(calls.length, 0);
   }
-  for (const verificationToken of [undefined, "", "x".repeat(2049)]) {
+  // 토큰이 없으면 이용 확인 없는 요청이다. 확인 없는 요청의 제한 장치가 없으면 이용 확인을 요구한다.
+  for (const [verificationToken, status] of [[undefined, 403], ["", 400], ["x".repeat(2049), 400], [123, 400]]) {
     const { handle, calls, verifications } = harness();
-    assert.equal((await handle(request({ ...input, verificationToken }), env)).status, 400);
+    assert.equal((await handle(request({ ...input, verificationToken }), env)).status, status);
     assert.equal(calls.length + verifications.length, 0);
   }
 });
@@ -245,6 +246,73 @@ await check("미리 취소한 요청은 전송하지 않고 진행 중 취소·�
 });
 
 // ---- Claude 우선 호출 (Anthropic 조직의 포함 크레딧) ----
+// 이용 확인은 이상 징후 때만: 평소에는 확인 없이 받고, 통과한 방문자에게는 30분 통행증을 준다.
+const limiter = (ok = true) => ({ calls: [], async limit(args) { this.calls.push(args); return { success: typeof ok === "function" ? ok(args) : ok }; } });
+const freeEnv = (ipOk = true, allOk = true) => ({ ...env, UNVERIFIED_IP_LIMITER: limiter(ipOk), UNVERIFIED_ALL_LIMITER: limiter(allOk) });
+const { verificationToken: _unused, ...plainInput } = input;
+await check("[이용 확인] 이상 징후가 없으면 Turnstile 없이 답하고 통행증은 주지 않는다", async () => {
+  const { handle, calls, verifications } = harness();
+  const testEnv = freeEnv();
+  const response = await handle(request(plainInput), testEnv);
+  assert.equal(response.status, 200);
+  assert.equal(verifications.length, 0);
+  assert.equal(calls.length, 1);
+  assert.equal(response.headers.get("x-ai-pass"), null);
+  assert.deepEqual(testEnv.UNVERIFIED_IP_LIMITER.calls, [{ key: "unverified:192.0.2.1" }]);
+  assert.deepEqual(testEnv.UNVERIFIED_ALL_LIMITER.calls, [{ key: "unverified:all" }]);
+});
+await check("[이용 확인] IP·전체 상한 초과나 제한 장치 없음·오류는 AI를 부르지 않고 이용 확인을 요구한다", async () => {
+  const broken = { limit: async () => { throw new Error("down"); } };
+  for (const testEnv of [freeEnv(false, true), freeEnv(true, false), env, { ...env, UNVERIFIED_IP_LIMITER: broken, UNVERIFIED_ALL_LIMITER: broken }]) {
+    const { handle, calls, verifications } = harness();
+    const response = await handle(request(plainInput), testEnv);
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), { error: "verification_required" });
+    assert.equal(calls.length + verifications.length, 0);
+  }
+});
+await check("[이용 확인] Turnstile을 통과하면 30분 통행증을 주고, 통행증 요청은 Turnstile·확인 없는 상한 없이 답한다", async () => {
+  const { handle, calls, verifications } = harness();
+  const testEnv = freeEnv(false, false);
+  const first = await handle(request(), testEnv);
+  assert.equal(first.status, 200);
+  const pass = first.headers.get("x-ai-pass");
+  assert.match(pass, /^\d+\.[A-Za-z0-9_-]{43}$/);
+  assert.ok(first.headers.get("access-control-expose-headers").includes("X-AI-Pass"));
+  const expires = Number(pass.split(".")[0]);
+  assert.ok(Math.abs(expires - (Math.floor(Date.now() / 1000) + PASS_TTL_SECONDS)) <= 2);
+  const second = await handle(request({ ...plainInput, pass }), testEnv);
+  assert.equal(second.status, 200);
+  assert.equal(second.headers.get("x-ai-pass"), null, "통행증 요청에는 새 통행증을 주지 않는다");
+  assert.equal(verifications.length, 1);
+  assert.equal(calls.length, 2);
+  assert.equal(testEnv.UNVERIFIED_IP_LIMITER.calls.length, 0);
+});
+await check("[이용 확인] 다른 IP·위조·만료·다른 비밀값 통행증은 거절하고, 토큰과 통행증을 함께 보내면 잘못된 요청", async () => {
+  const secret = env.TURNSTILE_SECRET_KEY;
+  const good = await issuePass(secret, "192.0.2.1", origin);
+  const [expires, signature] = good.split(".");
+  const flipped = signature.slice(0, -1) + (signature.endsWith("A") ? "B" : "A");
+  const cases = [
+    await issuePass(secret, "198.51.100.7", origin),
+    `${Number(expires) + 60}.${signature}`,
+    `${expires}.${flipped}`,
+    await issuePass(secret, "192.0.2.1", origin, Date.now() - (PASS_TTL_SECONDS + 5) * 1000),
+    await issuePass("other-secret", "192.0.2.1", origin),
+    "not-a-pass",
+  ];
+  for (const pass of cases) {
+    const { handle, calls } = harness();
+    const response = await handle(request({ ...plainInput, pass }), freeEnv());
+    assert.equal(response.status, 403, pass);
+    assert.deepEqual(await response.json(), { error: "verification_failed" });
+    assert.equal(calls.length, 0);
+  }
+  const { handle, calls } = harness();
+  const both = await handle(request({ ...input, pass: good }), freeEnv());
+  assert.equal(both.status, 400);
+  assert.equal(calls.length, 0);
+});
 const claudeKey = "test-only-anthropic-" + "z".repeat(24);
 const claudeEnv = { ...env, ANTHROPIC_API_KEY: claudeKey, ANTHROPIC_CREDITS_ONLY_CONFIRMED: "true" };
 const claudeOnlyEnv = { ...claudeEnv, GEMINI_API_KEY: "", GEMINI_FREE_TIER_CONFIRMED: "false" };

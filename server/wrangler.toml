@@ -21,3 +21,14 @@ simple = { limit = 5, period = 60 }
 
 [observability]
 enabled = false
+
+# 이용 확인(Turnstile) 없이 받는 요청의 상한. 넘으면 이상 징후로 보고 이용 확인을 요구한다.
+[[ratelimits]]
+name = "UNVERIFIED_IP_LIMITER"
+namespace_id = "10014"
+simple = { limit = 3, period = 60 }
+
+[[ratelimits]]
+name = "UNVERIFIED_ALL_LIMITER"
+namespace_id = "10015"
+simple = { limit = 30, period = 60 }

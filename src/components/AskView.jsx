@@ -3,7 +3,7 @@ import { cycleLabel, deliveryOf, portalOf, shortField } from "../lib/catalog.js"
 import { buildIndex } from "../ai/retrieval.js";
 import { recommend } from "../ai/recommend.js";
 import { sharedGeminiUrl } from "../ai/providers/shared-gemini.js";
-import { discardPreparedUsage, prepareSharedUsage, verifySharedUsage } from "../ai/providers/turnstile.js";
+import { verifySharedUsage } from "../ai/providers/turnstile.js";
 
 const RELEVANCE_LABEL = { high: "관련도 높음", medium: "관련도 보통", low: "참고" };
 
@@ -109,7 +109,6 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
   useEffect(() => () => {
     abortRef.current?.abort();
     abortRef.current = null;
-    discardPreparedUsage();
   }, []);
 
   // 저장된 AI 추천 예시: 실제 키로 받은 응답을 data/ai-examples.json 에 둔 것. 예시 질문이면 AI 호출 없이 보여 준다. (새로 AI 를 부르지 않음)
@@ -150,7 +149,8 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
     if (status === "done" && result && !result.restored) headingRef.current?.focus();
   }, [status, result]);
 
-  const ask = async (text, options = {}) => {
+  // verify: 공용 서버가 이용 확인을 요구했을 때만 true 로 다시 부른다.
+  const ask = async (text, options = {}, verify = false) => {
     const requestMode = options.mode ?? mode;
     const personal = options.usePersonalKey ?? usePersonalKey;
     const shared = requestMode === "gemini" && !!sharedGeminiUrl(ai.gemini) && !personal;
@@ -184,7 +184,8 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
     try {
       let verificationToken;
       let next;
-      if (shared) {
+      // 공용 AI는 먼저 이용 확인 없이(또는 통행증으로) 묻고, 서버가 이상 징후로 이용 확인을 요구할 때만 Turnstile을 받는다.
+      if (shared && verify) {
         setVerifying(true);
         setLiveMessage("공용 무료 AI 이용 확인 중입니다.");
         try {
@@ -200,6 +201,7 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
       }
       next ??= await recommend({ question: trimmed, mode: requestMode, store, index, apiKey: shared ? undefined : requestKey, model, usePersonalKey: personal, verificationToken, signal: controller.signal });
       if (abortRef.current !== controller) return; // 그 사이 새 질문을 보냈거나 취소했다면 이 결과는 버린다
+      if (next.needsVerification && !verify) return ask(text, options, true);
       setResult(next);
       setStatus("done");
       setLiveMessage(next.recommendations.length ? `추천 데이터 ${next.recommendations.length}건을 찾았습니다.` : "관련 데이터를 찾지 못했습니다.");
@@ -224,7 +226,6 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
   const cancel = () => {
     abortRef.current?.abort();
     abortRef.current = null;
-    discardPreparedUsage();
     setVerifying(false);
     setStatus(result ? "done" : "idle");
     setLiveMessage("질문을 취소했습니다.");
@@ -298,11 +299,7 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
             value={question}
             aria-invalid={formError ? "true" : undefined}
             aria-describedby={formError ? "ask-form-error" : undefined}
-            onChange={(event) => {
-              setQuestion(event.target.value);
-              // 공용 AI로 질문할 것 같으면 이용 확인을 미리 시작해 질문하기를 누른 뒤 기다리는 시간을 줄인다.
-              if (sharedEnabled && !usePersonalKey && status !== "loading" && event.target.value.trim().length >= 2) prepareSharedUsage({ siteKey: ai.gemini.shared.turnstileSiteKey, container: verificationRef.current });
-            }}
+            onChange={(event) => setQuestion(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) submit(event);
             }}
@@ -314,7 +311,7 @@ export default function AskView({ store, saved, onSave, onOpenDataset, request, 
         {isAi && (
           <p className="ask-privacy">
             ※ 질문과 후보 데이터의 이름·분야·설명 요약이 <b>{sendTarget}</b>로 전송됩니다. 개인정보·비밀번호는 입력하지 마세요.
-            {sharedEnabled && !usePersonalKey && " 공용 AI 이용 확인에는 Cloudflare Turnstile을 사용합니다."}
+            {sharedEnabled && !usePersonalKey && " 요청이 몰리거나 이상 접근이 의심될 때는 Cloudflare Turnstile로 이용 확인을 합니다."}
           </p>
         )}
         {formError && (

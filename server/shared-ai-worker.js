@@ -20,6 +20,8 @@ const VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 const MAX_BODY_BYTES = 128 * 1024;
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const MAX_PROMPT_CHARS = 40_000;
+// 이용 확인을 통과한 방문자에게 주는 통행증의 유효 시간. 그동안은 질문마다 이용 확인을 다시 받지 않는다. (2026-10-27 사용자 결정 30분)
+export const PASS_TTL_SECONDS = 30 * 60;
 const SYSTEM = buildSystemPrompt({ orgName: "국민체육진흥공단", serviceName: "KSPO 데이터 지도" });
 
 function allowedOrigins(value) {
@@ -41,6 +43,19 @@ function claudeReady(env) {
   // 이 확인값은 운영자가 Anthropic Console 조직에 구매한 크레딧이 없고 자동 충전이 꺼져 있음을 확인한 기록이며, 결제 상태를 조회하는 장치는 아니다.
   // 그 상태에서는 포함 크레딧이 바닥나면 Anthropic이 요청을 거절하므로 크레딧을 넘어 과금되지 않는다.
   return env.ANTHROPIC_CREDITS_ONLY_CONFIRMED === "true" && Boolean(env.ANTHROPIC_API_KEY?.trim());
+}
+
+// 이상 징후가 없으면 이용 확인 없이 받는다. (2026-10-27 사용자 결정: Turnstile은 이상 접근 때만)
+// 이용 확인 없는 요청이 같은 IP에서 분당 3회, 전체에서 분당 30회를 넘으면 이상 징후로 보고 이용 확인을 요구한다.
+// 제한 장치가 설정되지 않았거나 응답하지 않으면 안전하게 항상 이용 확인을 요구한다.
+async function admitWithoutVerification(env, ip) {
+  if (typeof env.UNVERIFIED_IP_LIMITER?.limit !== "function" || typeof env.UNVERIFIED_ALL_LIMITER?.limit !== "function") return false;
+  try {
+    const mine = await env.UNVERIFIED_IP_LIMITER.limit({ key: `unverified:${ip}` });
+    if (!mine.success) return false;
+    const all = await env.UNVERIFIED_ALL_LIMITER.limit({ key: "unverified:all" });
+    return all.success === true;
+  } catch { return false; }
 }
 
 function ready(env) {
@@ -72,14 +87,48 @@ async function boundedText(message, limit) {
 
 function validateBody(raw) {
   const body = JSON.parse(raw);
-  if (!body || Array.isArray(body) || Object.keys(body).some((key) => !["question", "candidates", "verificationToken"].includes(key))) throw new Error("bad_request");
-  if (typeof body.verificationToken !== "string" || !body.verificationToken.trim() || body.verificationToken.length > 2048) throw new Error("bad_request");
+  if (!body || Array.isArray(body) || Object.keys(body).some((key) => !["question", "candidates", "verificationToken", "pass"].includes(key))) throw new Error("bad_request");
+  // 이용 확인 토큰과 통행증은 둘 중 하나만 받는다. 둘 다 없으면 이용 확인 없는 요청이다.
+  if (body.verificationToken !== undefined && body.pass !== undefined) throw new Error("bad_request");
+  if (body.verificationToken !== undefined && (typeof body.verificationToken !== "string" || !body.verificationToken.trim() || body.verificationToken.length > 2048)) throw new Error("bad_request");
+  if (body.pass !== undefined && (typeof body.pass !== "string" || body.pass.length > 200)) throw new Error("bad_request");
   if (typeof body.question !== "string" || body.question.trim().length < 2 || body.question.length > LIMITS.questionChars) throw new Error("bad_request");
   if (!Array.isArray(body.candidates) || !body.candidates.length || body.candidates.length > LIMITS.candidates) throw new Error("bad_request");
   const candidates = body.candidates.map(cleanCandidate);
   if (candidates.some((item) => !item || !Number.isSafeInteger(item.no) || item.no < 1 || !item.name)) throw new Error("bad_request");
   if (new Set(candidates.map((item) => item.no)).size !== candidates.length || JSON.stringify(candidates).length > MAX_PROMPT_CHARS) throw new Error("bad_request");
-  return { question: body.question.trim(), candidates, verificationToken: body.verificationToken };
+  return { question: body.question.trim(), candidates, verificationToken: body.verificationToken, pass: body.pass };
+}
+
+// 통행증: "만료시각(초).서명". 서명은 Turnstile Secret에서 파생한 HMAC 키로 만료시각·접속 IP·화면 Origin을 묶는다.
+// 다른 IP·다른 화면에서 쓰거나 만료되면 받지 않는다. 서버에 저장하지 않으며 새 Secret도 필요 없다.
+const encoder = new TextEncoder();
+const toBase64Url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+function fromBase64Url(text) {
+  const binary = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+async function passKey(secret) {
+  const base = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const derived = await crypto.subtle.sign("HMAC", base, encoder.encode("kspo-shared-ai-pass-v1"));
+  return crypto.subtle.importKey("raw", derived, { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
+}
+const passMessage = (expires, ip, origin) => encoder.encode(`v1|${expires}|${ip}|${origin}`);
+
+export async function issuePass(secret, ip, origin, now = Date.now()) {
+  const expires = Math.floor(now / 1000) + PASS_TTL_SECONDS;
+  const signature = await crypto.subtle.sign("HMAC", await passKey(secret), passMessage(expires, ip, origin));
+  return `${expires}.${toBase64Url(signature)}`;
+}
+
+export async function passValid(secret, pass, ip, origin, now = Date.now()) {
+  const match = /^(\d{1,12})\.([A-Za-z0-9_-]{43})$/.exec(pass ?? "");
+  if (!match) return false;
+  const expires = Number(match[1]);
+  if (expires <= Math.floor(now / 1000) || expires > Math.floor(now / 1000) + PASS_TTL_SECONDS) return false;
+  try {
+    return await crypto.subtle.verify("HMAC", await passKey(secret), fromBase64Url(match[2]), passMessage(expires, ip, origin));
+  } catch { return false; }
 }
 
 // 외부 오류 문장·프로젝트 ID·키는 반환하지 않고 허용한 한도 종류만 전달한다.
@@ -124,8 +173,10 @@ export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args),
   return async function handle(request, env) {
     const origin = request.headers.get("origin") ?? "";
     const allowed = allowedOrigins(env.AI_ALLOWED_ORIGINS).includes(origin);
-    const cors = allowed ? { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Max-Age": "600", "Access-Control-Expose-Headers": "Retry-After" } : {};
-    const send = (status, value, extra = {}) => new Response(value === null ? null : JSON.stringify(value), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", Vary: "Origin", ...cors, ...extra } });
+    const cors = allowed ? { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Max-Age": "600", "Access-Control-Expose-Headers": "Retry-After, X-AI-Pass" } : {};
+    // 이용 확인을 막 통과한 요청이면 이후 응답에 새 통행증을 붙인다.
+    let newPass = null;
+    const send = (status, value, extra = {}) => new Response(value === null ? null : JSON.stringify(value), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", Vary: "Origin", ...cors, ...(newPass ? { "X-AI-Pass": newPass } : {}), ...extra } });
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/healthz") return send(ready(env) ? 200 : 503, { ok: ready(env) });
     if (url.pathname !== "/recommend" || url.search) return send(404, { error: "not_found" });
@@ -156,18 +207,26 @@ export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args),
     active += 1;
     try {
       if (controller.signal.aborted) return send(499, { error: "cancelled" });
-      // Origin은 인증이 아니다. 단일사용 방문자 토큰을 발급한 서비스에 직접 검증한다.
-      const verification = await fetchImpl(VERIFY_URL, {
-        method: "POST", redirect: "manual",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ secret: env.TURNSTILE_SECRET_KEY, response: input.verificationToken, remoteip: ip }),
-        signal: controller.signal,
-      });
-      if (!verification.ok) return send(503, { error: "unavailable" });
-      let verified;
-      try { verified = JSON.parse(await boundedText(verification, 8192)); }
-      catch { return send(503, { error: "unavailable" }); }
-      if (verified.success !== true || verified.action !== "shared-ai" || verified.hostname !== new URL(origin).hostname) return send(403, { error: "verification_failed" });
+      if (input.pass !== undefined) {
+        // 30분 안에 이용 확인을 통과한 같은 IP·같은 화면의 통행증이면 Turnstile 검증을 건너뛴다.
+        if (!(await passValid(env.TURNSTILE_SECRET_KEY, input.pass, ip, origin))) return send(403, { error: "verification_failed" });
+      } else if (input.verificationToken === undefined) {
+        if (!(await admitWithoutVerification(env, ip))) return send(403, { error: "verification_required" });
+      } else {
+        // Origin은 인증이 아니다. 단일사용 방문자 토큰을 발급한 서비스에 직접 검증한다.
+        const verification = await fetchImpl(VERIFY_URL, {
+          method: "POST", redirect: "manual",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ secret: env.TURNSTILE_SECRET_KEY, response: input.verificationToken, remoteip: ip }),
+          signal: controller.signal,
+        });
+        if (!verification.ok) return send(503, { error: "unavailable" });
+        let verified;
+        try { verified = JSON.parse(await boundedText(verification, 8192)); }
+        catch { return send(503, { error: "unavailable" }); }
+        if (verified.success !== true || verified.action !== "shared-ai" || verified.hostname !== new URL(origin).hostname) return send(403, { error: "verification_failed" });
+        newPass = await issuePass(env.TURNSTILE_SECRET_KEY, ip, origin);
+      }
       if (controller.signal.aborted) return send(499, { error: "cancelled" });
       let claudeFailure = null;
       if (claudeReady(env)) {

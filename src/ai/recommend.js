@@ -50,7 +50,7 @@ export function selectCandidates(index, store, question) {
  * @param {string} [args.apiKey] gemini 모드에서 이용자가 입력한 키
  * @param {string} [args.model]  gemini 모드에서 이용자가 고른 모델. site.json 의 ai.gemini.models 에 있는 것만 쓰고, 없으면 기본 모델을 쓴다.
  * @param {boolean} [args.usePersonalKey] 공용 AI 설정이 있을 때 이용자가 명시적으로 개인 키 사용을 선택했는지
- * @param {string} [args.verificationToken] 이번 공용 요청에만 쓰는 이용 확인 토큰
+ * @param {string} [args.verificationToken] 이번 공용 요청에만 쓰는 이용 확인 토큰. 없으면 앞서 받은 통행증으로, 그것도 없으면 이용 확인 없이 묻는다.
  * @param {AbortSignal} [args.signal]
  */
 export async function recommend({ question, mode, store, index, apiKey, model, usePersonalKey = false, verificationToken, signal }) {
@@ -119,6 +119,7 @@ export async function recommend({ question, mode, store, index, apiKey, model, u
     result.error = error instanceof AiError ? error.message : "AI 추천 중 오류가 발생했습니다.";
     result.errorCode = error instanceof AiError ? error.code : "server";
     if (error instanceof AiError && error.code === "shared_quota") result.sharedQuota = { quota: error.quota, retryAfterSeconds: error.retryAfterSeconds };
+    if (error instanceof AiError && error.needsVerification) result.needsVerification = true;
     return result; // 로컬 검색 결과(result.recommendations)를 그대로 보여준다
   }
 }
