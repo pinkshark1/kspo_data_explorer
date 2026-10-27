@@ -542,4 +542,12 @@ await check("[진단] X-AI-Timing에 AI별 요청 수·시간만 남기고, 질�
   assert.match(viaGemini, /^claude=1;\d+ms;server, gemini=1;\d+ms$/);
   assert.ok(![input.question, claudeKey, privateValue].some((secret) => viaGemini.includes(secret)));
 });
+await check("[답 길이] AI 추천은 최대 5건만 돌려주고 지시문에도 5건으로 적는다", async () => {
+  const many = { ...answer, recommendations: Array.from({ length: 8 }, (_, i) => ({ no: 100 + i, relevance: "high", reason: "이유" })) };
+  const candidates = many.recommendations.map((item) => ({ no: item.no, name: `데이터 ${item.no}` }));
+  const { handle, calls } = harness(routed({ claude: () => json(claudeMessage([{ type: "text", text: JSON.stringify(many) }])) }));
+  const response = await handle(request({ ...input, candidates }), claudeEnv);
+  assert.equal((await response.json()).recommendations.length, 5);
+  assert.ok(JSON.parse(calls[0][1].body).system.includes("최대 5개"));
+});
 console.log(`\n${passed}/${passed} 공용 AI 중계 검사 통과`);

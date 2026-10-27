@@ -46,7 +46,8 @@ export const FORMAT_HINT = [
 export const LIMITS = {
   questionChars: 300, // 질문 최대 길이
   candidates: 200, // 한 번에 보내는 후보 최대 개수 (카탈로그 전체를 짧게 보내는 경우 포함)
-  recommendations: 8,
+  recommendations: 8, // 기본 검색 결과 수
+  aiRecommendations: 5, // AI 추천 최대 수. 답 글이 짧을수록 빨리 답하므로 기본 검색보다 적게 둔다(2026-10-27)
   combinations: 2,
 };
 
@@ -58,7 +59,7 @@ export function buildSystemPrompt({ orgName, serviceName }) {
     "- 추천은 반드시 후보 목록에 있는 데이터의 번호(no)로만 합니다. 목록에 없는 데이터를 만들어 내지 않습니다.",
     "- 이유(reason)에는 후보 정보(이름, 분야, 제공 형태, 설명, 컬럼)에서 확인되는 내용만 한 문장(40자 안팎)으로 짧게 씁니다. 데이터에 실제로 들어 있는지 알 수 없는 내용을 단정하지 않습니다.",
     "- 질문과 거의 관련 없는 후보는 추천하지 않습니다. 관련 데이터가 없으면 recommendations 를 비우고 summary 에서 그렇다고 알려 줍니다.",
-    "- recommendations 는 관련도가 높은 순서로 최대 8개입니다.",
+    `- recommendations 는 관련도가 높은 순서로 최대 ${LIMITS.aiRecommendations}개입니다.`,
     "- '연계', '결합', '함께 활용' 같은 질문이면 combinations 에 함께 쓰면 좋은 데이터 묶음(2~4개)과 한 문장짜리 활용 아이디어를 최대 2개 제안합니다. 그 외에는 비워 둡니다.",
     "- summary 는 두 문장 이내의 공공기관 안내 문체로, 질문에 대한 답과 어떤 데이터를 보면 되는지 알려 줍니다.",
     "- 법령 해석, 정책 판단, 개인정보가 담긴 자료 요청에는 답하지 않고 공식 문의처 확인을 안내합니다.",
@@ -134,7 +135,7 @@ export function parseAiResponse(text, candidateNos) {
       relevance: ["high", "medium", "low"].includes(item.relevance) ? item.relevance : "medium",
       reason: String(item.reason ?? "").slice(0, 300),
     });
-    if (recommendations.length >= LIMITS.recommendations) break;
+    if (recommendations.length >= LIMITS.aiRecommendations) break;
   }
 
   const combinations = [];
