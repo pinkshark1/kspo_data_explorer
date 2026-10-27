@@ -199,19 +199,21 @@ export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args),
   let claudePause = { until: 0, reason: null };
 
   // SDK가 환경변수의 주소·인증값을 쓰지 않도록 주소와 키를 직접 지정한다. 실패는 Gemini가 대신하므로 SDK 재시도는 끈다.
-  async function askClaude(env, input, signal) {
+  async function askClaude(env, input, signal, stats) {
     const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY.trim(), authToken: null, baseURL: ANTHROPIC_URL, maxRetries: 0, timeout: claudeTimeoutMs, fetch: fetchImpl, fetchOptions: { redirect: "manual" } });
-    const text = await runClaudeRequest({ Anthropic, client, config: CLAUDE_CONFIG, system: SYSTEM, userMessage: buildUserMessage(input.question, input.candidates), signal });
+    const text = await runClaudeRequest({ Anthropic, client, config: CLAUDE_CONFIG, system: SYSTEM, userMessage: buildUserMessage(input.question, input.candidates), signal, stats });
     return parseAiResponse(text, input.candidates.map((candidate) => candidate.no));
   }
 
   return async function handle(request, env, ctx) {
     const origin = request.headers.get("origin") ?? "";
     const allowed = allowedOrigins(env.AI_ALLOWED_ORIGINS).includes(origin);
-    const cors = allowed ? { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Max-Age": "600", "Access-Control-Expose-Headers": "Retry-After, X-AI-Pass" } : {};
+    const cors = allowed ? { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Max-Age": "600", "Access-Control-Expose-Headers": "Retry-After, X-AI-Pass, X-AI-Timing" } : {};
     // 이용 확인을 막 통과한 요청이면 이후 응답에 새 통행증을 붙인다.
     let newPass = null;
-    const send = (status, value, extra = {}) => new Response(value === null ? null : JSON.stringify(value), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", Vary: "Origin", ...cors, ...(newPass ? { "X-AI-Pass": newPass } : {}), ...extra } });
+    // 진단용: 어느 AI에 몇 번 요청했고 얼마나 걸렸는지(질문·키는 넣지 않음). 예: claude=1;3200ms, gemini=1;900ms
+    const timing = [];
+    const send = (status, value, extra = {}) => new Response(value === null ? null : JSON.stringify(value), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", Vary: "Origin", ...cors, ...(newPass ? { "X-AI-Pass": newPass } : {}), ...(timing.length ? { "X-AI-Timing": timing.join(", ") } : {}), ...extra } });
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/healthz") return send(ready(env) ? 200 : 503, { ok: ready(env) });
     if (url.pathname !== "/recommend" || url.search) return send(404, { error: "not_found" });
@@ -246,7 +248,10 @@ export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args),
         // 30분 안에 이용 확인을 통과한 같은 IP·같은 화면의 통행증이면 Turnstile 검증을 건너뛴다.
         if (!(await passValid(env.TURNSTILE_SECRET_KEY, input.pass, ip, origin))) return send(403, { error: "verification_failed" });
       } else if (input.verificationToken === undefined) {
-        if (!(await admitWithoutVerification(env, ip))) return send(403, { error: "verification_required" });
+        const gateStarted = Date.now();
+        const admitted = await admitWithoutVerification(env, ip);
+        timing.push(`gate=${Date.now() - gateStarted}ms`);
+        if (!admitted) return send(403, { error: "verification_required" });
       } else {
         // Origin은 인증이 아니다. 단일사용 방문자 토큰을 발급한 서비스에 직접 검증한다.
         const verification = await fetchImpl(VERIFY_URL, {
@@ -266,9 +271,11 @@ export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args),
       const cache = typeof env.ANSWER_CACHE?.get === "function" && typeof env.ANSWER_CACHE?.put === "function" ? env.ANSWER_CACHE : null;
       let cacheKey = null;
       if (cache) {
+        const cacheStarted = Date.now();
         try {
           cacheKey = await answerCacheKey(input);
           const saved = await cache.get(cacheKey, "json");
+          timing.push(`cache=${saved?.answer ? "hit" : "miss"};${Date.now() - cacheStarted}ms`);
           if (saved?.answer && ["claude", "gemini"].includes(saved.provider)) return send(200, saved.answer, { "X-AI-Provider": saved.provider, "X-AI-Cache": "hit" });
         } catch { /* 저장소 오류는 무시하고 AI에 묻는다 */ }
       }
@@ -286,8 +293,11 @@ export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args),
           const stopClaude = () => claudeController.abort();
           controller.signal.addEventListener("abort", stopClaude, { once: true });
           const claudeTimer = setTimeout(stopClaude, claudeTimeoutMs);
+          const claudeStats = { attempts: 0 };
+          const claudeStarted = Date.now();
           try {
-            const answer = await askClaude(env, input, claudeController.signal);
+            const answer = await askClaude(env, input, claudeController.signal, claudeStats);
+            timing.push(`claude=${claudeStats.attempts};${Date.now() - claudeStarted}ms`);
             if (answer) {
               remember(answer, "claude");
               return send(200, answer, { "X-AI-Provider": "claude" });
@@ -297,6 +307,7 @@ export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args),
             if (error?.code === "refusal") return send(422, { error: "refusal" });
             // 정해진 시간이 지나 끊은 경우는 SDK가 취소(cancelled)로 알리므로 시간 초과로 바꿔 기록한다.
             claudeFailure = claudeController.signal.aborted && !controller.signal.aborted ? "timeout" : error?.code ?? "server";
+            timing.push(`claude=${claudeStats.attempts};${Date.now() - claudeStarted}ms;${claudeFailure}`);
             if (CLAUDE_PAUSE_MS[claudeFailure]) claudePause = { until: Date.now() + CLAUDE_PAUSE_MS[claudeFailure], reason: claudeFailure };
           } finally {
             clearTimeout(claudeTimer);
@@ -318,7 +329,10 @@ export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args),
       });
       let response;
       let data;
+      const geminiStarted = Date.now();
+      let geminiAttempts = 0;
       for (let attempt = 0; ; attempt += 1) {
+        geminiAttempts += 1;
         response = await fetchImpl(GEMINI_URL, {
           method: "POST", redirect: "manual",
           headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY.trim() },
@@ -331,6 +345,7 @@ export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args),
         await pause(retryDelaysMs[attempt], controller.signal);
         if (controller.signal.aborted) break;
       }
+      timing.push(`gemini=${geminiAttempts};${Date.now() - geminiStarted}ms`);
       if (controller.signal.aborted) return send(request.signal.aborted ? 499 : 504, { error: request.signal.aborted ? "cancelled" : "upstream" });
       if ([500, 503].includes(response.status)) return send(503, { error: "busy" }, { "Retry-After": "30" });
       if (data === undefined) return send(502, { error: "upstream" });

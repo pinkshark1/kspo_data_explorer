@@ -530,4 +530,16 @@ await check("[저장] 실패·거절 응답은 저장하지 않는다", async ()
   assert.notEqual((await failing.handle(request(), { ...claudeEnv, ANSWER_CACHE: kv })).status, 200);
   assert.equal(kv.puts.length, 0);
 });
+await check("[진단] X-AI-Timing에 AI별 요청 수·시간만 남기고, 질문·키는 넣지 않는다", async () => {
+  const normal = harness(routed());
+  const ok = await normal.handle(request(), claudeEnv);
+  assert.match(ok.headers.get("x-ai-timing"), /^claude=1;\d+ms$/);
+  assert.ok(ok.headers.get("access-control-expose-headers").includes("X-AI-Timing"));
+  const rejected = harness(routed({ claude: (_url, options) => (JSON.parse(options.body).thinking ? claudeError(400, "invalid_request_error") : json(claudeMessage())) }));
+  assert.match((await rejected.handle(request(), claudeEnv)).headers.get("x-ai-timing"), /^claude=2;\d+ms$/);
+  const fallback = harness(routed({ claude: () => claudeError(500, "api_error") }));
+  const viaGemini = (await fallback.handle(request(), claudeEnv)).headers.get("x-ai-timing");
+  assert.match(viaGemini, /^claude=1;\d+ms;server, gemini=1;\d+ms$/);
+  assert.ok(![input.question, claudeKey, privateValue].some((secret) => viaGemini.includes(secret)));
+});
 console.log(`\n${passed}/${passed} 공용 AI 중계 검사 통과`);

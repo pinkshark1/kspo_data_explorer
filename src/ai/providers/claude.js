@@ -25,8 +25,9 @@ export function toAiError(error, Anthropic) {
  * @param {string} options.system     시스템 프롬프트
  * @param {string} options.userMessage 질문과 후보
  * @param {AbortSignal} [options.signal]
+ * @param {{attempts: number}} [options.stats] 넘기면 보낸 요청 수를 센다(진단용)
  */
-export async function runClaudeRequest({ Anthropic, client, config, system, userMessage, signal }) {
+export async function runClaudeRequest({ Anthropic, client, config, system, userMessage, signal, stats }) {
   const buildRequest = (structured, thinking) => ({
     model: config.model,
     max_tokens: config.maxTokens,
@@ -49,6 +50,7 @@ export async function runClaudeRequest({ Anthropic, client, config, system, user
   let lastError;
   for (const attempt of attempts) {
     const request = buildRequest(attempt.structured, attempt.thinking);
+    if (stats) stats.attempts += 1;
     if (!Object.keys(request.output_config).length) delete request.output_config;
     try {
       response = attempt.fallback
