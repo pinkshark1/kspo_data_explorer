@@ -1,6 +1,6 @@
 // 공용 무료 중계의 보안 경계·한도 분류·취소를 실제 키나 외부 호출 없이 검증한다.
 import assert from "node:assert/strict";
-import { createSharedAiHandler, issuePass, PASS_TTL_SECONDS, quotaFacts, SHARED_CLAUDE_MODEL, SHARED_MODEL, UNVERIFIED_PER_IP_PER_MINUTE, UNVERIFIED_TOTAL_PER_MINUTE, UsageGate } from "../server/shared-ai-worker.js";
+import { ANSWER_CACHE_TTL_SECONDS, answerCacheKey, createSharedAiHandler, issuePass, PASS_TTL_SECONDS, quotaFacts, SHARED_CLAUDE_MODEL, SHARED_MODEL, UNVERIFIED_PER_IP_PER_MINUTE, UNVERIFIED_TOTAL_PER_MINUTE, UsageGate } from "../server/shared-ai-worker.js";
 
 let passed = 0;
 async function check(name, run) {
@@ -483,5 +483,51 @@ await check("[Claude] 이용자가 취소하면 Gemini를 부르지 않고 499",
   active.abort();
   assert.equal((await pending).status, 499);
   assert.equal(calls.length, 1);
+});
+// 같은 질문 저장(KV): 같은 질문·후보면 AI를 다시 부르지 않고, 저장소가 없거나 오류이면 평소대로 묻는다.
+const kvStore = () => {
+  const data = new Map();
+  return { data, puts: [], async get(key, type) { const value = data.get(key); return value === undefined ? null : type === "json" ? JSON.parse(value) : value; }, async put(key, value, options) { this.puts.push({ key, options }); data.set(key, value); } };
+};
+await check("[저장] 같은 질문·후보의 두 번째 요청은 AI를 부르지 않고 저장한 답을 돌려주며, 7일 뒤 지운다", async () => {
+  const { handle, calls } = harness(routed());
+  const kv = kvStore();
+  const waits = [];
+  const testEnv = { ...claudeEnv, ANSWER_CACHE: kv };
+  const first = await handle(request(), testEnv, { waitUntil: (promise) => waits.push(promise) });
+  assert.equal(first.status, 200);
+  assert.equal(first.headers.get("x-ai-cache"), null);
+  await Promise.all(waits);
+  assert.equal(kv.puts.length, 1);
+  assert.equal(kv.puts[0].options.expirationTtl, ANSWER_CACHE_TTL_SECONDS);
+  assert.ok(!kv.puts[0].key.includes(input.question), "질문 원문을 키에 쓰지 않는다");
+  const second = await handle(request({ ...input, question: `  ${input.question}  ` }), testEnv);
+  assert.equal(second.status, 200);
+  assert.equal(second.headers.get("x-ai-cache"), "hit");
+  assert.equal(second.headers.get("x-ai-provider"), "claude");
+  assert.deepEqual(await second.json(), await first.json());
+  assert.equal(calls.length, 1, "두 번째는 AI를 부르지 않는다");
+  const other = await handle(request({ ...input, question: "체육시설 위치 데이터" }), testEnv);
+  assert.equal(other.headers.get("x-ai-cache"), null);
+  assert.equal(calls.length, 2, "다른 질문은 새로 묻는다");
+});
+await check("[저장] 후보가 바뀌면 키가 달라지고, 저장소 오류·없음은 평소대로 AI 답을 준다", async () => {
+  const changed = { ...input, candidates: [{ ...input.candidates[0], summary: "바뀐 설명" }] };
+  assert.notEqual(await answerCacheKey(input), await answerCacheKey(changed));
+  const broken = { get: async () => { throw new Error("kv down"); }, put: async () => { throw new Error("kv down"); } };
+  for (const testEnv of [{ ...claudeEnv, ANSWER_CACHE: broken }, claudeEnv]) {
+    const { handle, calls } = harness(routed());
+    const response = await handle(request(), testEnv);
+    assert.equal(response.status, 200);
+    assert.equal(calls.length, 1);
+  }
+});
+await check("[저장] 실패·거절 응답은 저장하지 않는다", async () => {
+  const kv = kvStore();
+  const { handle } = harness(routed({ claude: () => json(claudeMessage([{ type: "text", text: "" }], "refusal")) }));
+  assert.equal((await handle(request(), { ...claudeEnv, ANSWER_CACHE: kv })).status, 422);
+  const failing = harness(routed({ claude: () => claudeError(500, "api_error"), gemini: () => json({ error: { message: "x" } }, 500) }), { retryDelaysMs: [] });
+  assert.notEqual((await failing.handle(request(), { ...claudeEnv, ANSWER_CACHE: kv })).status, 200);
+  assert.equal(kv.puts.length, 0);
 });
 console.log(`\n${passed}/${passed} 공용 AI 중계 검사 통과`);

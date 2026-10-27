@@ -31,3 +31,8 @@ class_name = "UsageGate"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["UsageGate"]
+
+# 같은 질문·같은 후보에 저장해 둔 답(7일). 없거나 무료 한도를 넘으면 저장 없이 AI에 묻는다.
+[[kv_namespaces]]
+binding = "ANSWER_CACHE"
+id = "c4282f461ee84b869ec37c5e583e50f7"

@@ -142,6 +142,14 @@ async function passKey(secret) {
 }
 const passMessage = (expires, ip, origin) => encoder.encode(`v1|${expires}|${ip}|${origin}`);
 
+// 같은 질문·같은 후보에는 저장해 둔 답을 돌려준다(Workers KV, 7일). 키에 지시문도 넣어 지시문·데이터가 바뀌면 새로 묻는다.
+// 저장소가 없거나 읽기·쓰기에 실패하면(무료 한도 초과 등) 저장 없이 평소대로 AI에 묻는다. 질문 원문은 키에 해시로만 남는다.
+export const ANSWER_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;
+export async function answerCacheKey(input) {
+  const normalized = JSON.stringify({ system: SYSTEM, question: input.question.replace(/\s+/g, " "), candidates: input.candidates });
+  return `answer:v1:${toBase64Url(await crypto.subtle.digest("SHA-256", encoder.encode(normalized)))}`;
+}
+
 export async function issuePass(secret, ip, origin, now = Date.now()) {
   const expires = Math.floor(now / 1000) + PASS_TTL_SECONDS;
   const signature = await crypto.subtle.sign("HMAC", await passKey(secret), passMessage(expires, ip, origin));
@@ -197,7 +205,7 @@ export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args),
     return parseAiResponse(text, input.candidates.map((candidate) => candidate.no));
   }
 
-  return async function handle(request, env) {
+  return async function handle(request, env, ctx) {
     const origin = request.headers.get("origin") ?? "";
     const allowed = allowedOrigins(env.AI_ALLOWED_ORIGINS).includes(origin);
     const cors = allowed ? { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Max-Age": "600", "Access-Control-Expose-Headers": "Retry-After, X-AI-Pass" } : {};
@@ -255,6 +263,21 @@ export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args),
         newPass = await issuePass(env.TURNSTILE_SECRET_KEY, ip, origin);
       }
       if (controller.signal.aborted) return send(499, { error: "cancelled" });
+      const cache = typeof env.ANSWER_CACHE?.get === "function" && typeof env.ANSWER_CACHE?.put === "function" ? env.ANSWER_CACHE : null;
+      let cacheKey = null;
+      if (cache) {
+        try {
+          cacheKey = await answerCacheKey(input);
+          const saved = await cache.get(cacheKey, "json");
+          if (saved?.answer && ["claude", "gemini"].includes(saved.provider)) return send(200, saved.answer, { "X-AI-Provider": saved.provider, "X-AI-Cache": "hit" });
+        } catch { /* 저장소 오류는 무시하고 AI에 묻는다 */ }
+      }
+      // 답을 돌려준 뒤 저장한다(응답을 늦추지 않음).
+      const remember = (answer, provider) => {
+        if (!cache || !cacheKey) return;
+        const saving = cache.put(cacheKey, JSON.stringify({ answer, provider }), { expirationTtl: ANSWER_CACHE_TTL_SECONDS }).catch(() => {});
+        if (typeof ctx?.waitUntil === "function") ctx.waitUntil(saving);
+      };
       let claudeFailure = null;
       if (claudeReady(env)) {
         if (Date.now() < claudePause.until) claudeFailure = claudePause.reason;
@@ -265,7 +288,10 @@ export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args),
           const claudeTimer = setTimeout(stopClaude, claudeTimeoutMs);
           try {
             const answer = await askClaude(env, input, claudeController.signal);
-            if (answer) return send(200, answer, { "X-AI-Provider": "claude" });
+            if (answer) {
+              remember(answer, "claude");
+              return send(200, answer, { "X-AI-Provider": "claude" });
+            }
             claudeFailure = "format";
           } catch (error) {
             if (error?.code === "refusal") return send(422, { error: "refusal" });
@@ -315,6 +341,7 @@ export function createSharedAiHandler({ fetchImpl = (...args) => fetch(...args),
       if (!response.ok) return send(502, { error: "upstream" });
       const answer = parseAiResponse(readGeminiText(data), input.candidates.map((candidate) => candidate.no));
       if (!answer) return send(502, { error: "upstream" });
+      remember(answer, "gemini");
       return send(200, answer, { "X-AI-Provider": "gemini" });
     } catch (error) {
       if (request.signal.aborted) return send(499, { error: "cancelled" });
